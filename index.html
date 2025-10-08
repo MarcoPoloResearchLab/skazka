@@ -1,21 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="light" x-data="bookReader()" x-init="init()" :class="themeClass">
+<html lang="en" data-bs-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TXT Book Reader — Alpine.js + Bootstrap (Providers + Re-decode)</title>
+  <title>TXT Book Reader — Alpine.js + Bootstrap</title>
 
   <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-  <!-- Alpine.js -->
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.7/dist/cdn.min.js"></script>
 
   <style>
     :root{
-      --page-width: 100vw;
-      --page-height: calc(100vh - 160px);
-      --column-gap: 32px;
+      --page-width: 100vw;                    /* updated at runtime to reader width */
+      --page-height: calc(100vh - 160px);     /* toolbar + footer allowance */
       --page-padding: 24px;
       --base-font-size: 18px;
       --line-height: 1.62;
@@ -32,21 +29,35 @@
                border-bottom:1px solid rgba(0,0,0,.08); padding:.5rem .75rem; }
     .area { flex:1 1 auto; overflow:hidden; position:relative; background:var(--page-bg); color:var(--page-fg); }
 
-    .columns {
-      height:var(--page-height);
-      overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch;
-      column-width:var(--page-width); column-gap:var(--column-gap);
-      padding:var(--page-padding);
-      font-size:var(--base-font-size); line-height:var(--line-height);
-      white-space:normal;
+    /* NEW: true paginated layout (no CSS columns) */
+    .pages {
+      display: flex;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      scroll-snap-type: x mandatory;
+      gap: 0; /* contiguous pages */
+      height: var(--page-height);
+      background: var(--page-bg);
+      color: var(--page-fg);
     }
-    .columns h1, .columns h2, .columns h3 {
-      break-after: avoid-column; break-inside: avoid;
+    .page {
+      flex: 0 0 var(--page-width);
+      height: var(--page-height);
+      padding: var(--page-padding);
+      scroll-snap-align: start;
+      font-size: var(--base-font-size);
+      line-height: var(--line-height);
+      white-space: normal;
+      overflow: hidden;
+    }
+    .page h1, .page h2, .page h3 {
       margin-top:1.1em; margin-bottom:.55em;
+      break-inside: avoid;
     }
-    .columns p, .columns ul, .columns ol, .columns blockquote { orphans:3; widows:3; }
-    .columns hr { border:0; border-top:1px dashed currentColor; opacity:.4; margin:1.25rem 0; }
-    .columns img { max-width:100%; height:auto; }
+    .page p, .page ul, .page ol, .page blockquote { orphans:3; widows:3; }
+    .page hr { border:0; border-top:1px dashed currentColor; opacity:.4; margin:1.25rem 0; }
+    .page img { max-width:100%; height:auto; }
 
     .footer { flex:0 0 auto; border-top:1px solid rgba(0,0,0,.08); padding:.35rem .75rem; background:var(--page-bg); }
     .page-nav-btn { position:absolute; top:50%; transform:translateY(-50%); z-index:10; opacity:.85; }
@@ -57,7 +68,7 @@
     .popover { color:#111; }
   </style>
 </head>
-<body>
+<body x-data="bookReader()" x-init="init()" :class="themeClass">
 
   <!-- TOC Drawer -->
   <div class="offcanvas offcanvas-start toc-offcanvas" tabindex="-1" id="tocDrawer" aria-labelledby="tocDrawerLabel">
@@ -170,7 +181,8 @@
       <button class="btn btn-light page-nav-btn page-prev" @click="prevPage()" title="Previous page"><i class="bi bi-chevron-left"></i></button>
       <button class="btn btn-light page-nav-btn page-next" @click="nextPage()" title="Next page"><i class="bi bi-chevron-right"></i></button>
 
-      <div id="readerColumns" class="columns" x-ref="readerColumns" x-html="bookHtml"></div>
+      <!-- New pages container (no x-html) -->
+      <div id="readerPages" class="pages" x-ref="readerPages"></div>
     </div>
 
     <!-- Footer -->
@@ -186,538 +198,14 @@
     </div>
   </div>
 
-  <!-- Bootstrap JS -->
+  <!-- Popper + Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js"></script>
 
-  <script>
-  function bookReader(){
-    return {
-      /* ---------- UI state ---------- */
-      ui: { fontSizePx: 18, pagePaddingPx: 24, theme: 'light', fitViewportHeight: true,
-            currentPageIndex: 0, totalPageCount: 1 },
-      themeClass: 'theme-light',
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.7/dist/cdn.min.js"></script>
 
-      /* ---------- Provider & encoding ---------- */
-      provider: 'auto',         // 'auto' | 'libru' | 'gutenberg' | 'plain'
-      encoding: 'auto',         // 'auto' | 'utf-8' | 'windows-1251' | 'koi8-r' | 'iso-8859-5'
-
-      /* ---------- Loader state ---------- */
-      loadUrl: '',
-      lastScrollKey: null,
-      lastRaw: { buffer: null, url: null, name: null, provider: null }, // raw bytes cache
-      usedEncoding: null, // for debugging/inspection if needed
-
-      /* ---------- Book state ---------- */
-      bookTitle: '',
-      bookAuthor: '',
-      bookHtml: '<p class="text-muted">Choose provider/encoding, then load a .txt from URL or disk.</p>',
-      toc: [],
-
-      readerEl: null,
-
-      /* ---------- Lifecycle ---------- */
-      init(){
-        this.readerEl = this.$refs.readerColumns || document.getElementById('readerColumns');
-        this.applyTheme();
-        this.applyTypography();
-        this.attachScrollHandlers();
-      },
-
-      /* ---------- Loaders ---------- */
-      async loadFromUrl(){
-        if(!this.loadUrl) return;
-        try {
-          const resp = await fetch(this.loadUrl, { cache: 'no-store' });
-          const buf = await resp.arrayBuffer();
-          this.lastRaw = { buffer: buf, url: this.loadUrl, name: null, provider: this.provider };
-          this.lastScrollKey = `scroll:${this.provider}:${this.loadUrl}`;
-          this.decodeAndConsume(buf);
-        } catch(err){
-          alert('Fetch failed (maybe CORS). Download the file and use Choose .txt.\n' + err);
-        }
-      },
-
-      loadFromFile(ev){
-        const input = ev.target;
-        if(!input.files || input.files.length === 0) return;
-        const file = input.files[0];
-        const reader = new FileReader();
-        reader.onload = () => {
-          const buf = reader.result;
-          this.lastRaw = { buffer: buf, url: null, name: file.name, provider: this.provider };
-          this.lastScrollKey = `scroll:${this.provider}:file:${file.name}`;
-          this.decodeAndConsume(buf);
-        };
-        reader.readAsArrayBuffer(file); // keep bytes so we can re-decode
-      },
-
-      onProviderOrEncodingChange(){
-        // Re-decode & re-parse from cached bytes when user changes provider or encoding
-        if (this.lastRaw && this.lastRaw.buffer) {
-          this.decodeAndConsume(this.lastRaw.buffer);
-        }
-      },
-
-      /* ---------- Decoding & autodetect ---------- */
-      decodeAndConsume(buf){
-        let text, encodingUsed;
-
-        if (this.encoding === 'auto') {
-          const best = this.decodeBest(buf);
-          text = best.text; encodingUsed = best.encoding;
-        } else {
-          text = this.safeDecode(buf, this.encoding);
-          encodingUsed = this.encoding;
-        }
-        this.usedEncoding = encodingUsed;
-
-        // HTML-in-.txt (Lib.ru, etc.) handling
-        if (this.looksLikeHtml(text)) {
-          text = this.htmlToPlainText(text);
-        }
-
-        // Provider autodetect if needed
-        let effectiveProvider = this.provider === 'auto' ? this.detectProvider(text) : this.provider;
-
-        // Provider-specific stripping
-        const normalized = this.normalizeText(text);
-        let stripped = normalized;
-        if (effectiveProvider === 'gutenberg') stripped = this.stripGutenberg(normalized);
-        else if (effectiveProvider === 'libru') stripped = this.stripLibRu(normalized);
-
-        // Meta, sections, render
-        const meta = this.extractMeta(stripped, effectiveProvider);
-        this.bookTitle = meta.title || 'Untitled';
-        this.bookAuthor = meta.author || '';
-
-        const segmented = this.segmentSections(stripped, effectiveProvider);
-        const html = this.buildHtml(segmented);
-        this.bookHtml = html;
-
-        // Post-render setup
-        queueMicrotask(() => {
-          this.applyTheme();
-          this.applyTypography();
-          this.buildToc();
-          this.wireFootnotes();
-          this.recomputePages();
-          this.restoreScroll();
-        });
-      },
-
-      safeDecode(buf, enc){
-        try { return new TextDecoder(enc).decode(buf); }
-        catch { return new TextDecoder('utf-8').decode(buf); }
-      },
-
-      decodeBest(buf){
-        const candidates = ['utf-8','windows-1251','koi8-r','iso-8859-5'];
-        // Try preferred language order (likely Russian sources)
-        let best = { text: '', encoding: 'utf-8', score: Infinity, cyr: 0 };
-        for (const enc of candidates){
-          let txt;
-          try { txt = new TextDecoder(enc).decode(buf); } catch { continue; }
-          const score = this.decodingScore(txt);
-          const cyr = this.countCyrillic(txt);
-          // Choose smallest "bad char" score; tie-break by more Cyrillic if text appears Russian
-          const better = (score < best.score) || (score === best.score && cyr > best.cyr);
-          if (better) best = { text: txt, encoding: enc, score, cyr };
-        }
-        return best;
-      },
-
-      decodingScore(txt){
-        // lower is better. Penalize replacement chars and control noise
-        const bad = (txt.match(/\uFFFD/g)||[]).length;     // �
-        const ctr = (txt.match(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g)||[]).length;
-        return bad * 100 + ctr;
-      },
-
-      countCyrillic(txt){
-        const m = txt.match(/[\u0400-\u04FF]/g);
-        return m ? m.length : 0;
-      },
-
-      looksLikeHtml(s){
-        return /^\s*<\s*(!doctype\s+html|html)(\s|>)/i.test(s) ||
-               /<pre[\s>]/i.test(s) || /<body[\s>]/i.test(s) || /<\/(p|h1|h2|h3|div)>/i.test(s);
-      },
-
-      htmlToPlainText(html){
-        try {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(html, 'text/html');
-          const pres = Array.from(doc.querySelectorAll('pre'));
-          if (pres.length) {
-            return pres.map(pre => pre.innerText.replace(/\r\n/g,'\n')).join('\n\n').trim();
-          }
-          // Convert <br> to newlines, then use innerText
-          doc.querySelectorAll('br').forEach(br => br.replaceWith(doc.createTextNode('\n')));
-          const body = doc.body ? doc.body.innerText : html;
-          return body.replace(/\r\n/g,'\n').trim();
-        } catch {
-          return html;
-        }
-      },
-
-      detectProvider(text){
-        const head = text.slice(0, 4000);
-        if (/PROJECT GUTENBERG/i.test(head) || /\*\*\*\s*START OF (THIS|THE) PROJECT GUTENBERG/i.test(head)) return 'gutenberg';
-        if (/Lib\.ru|Библиотека Максима Мошкова|moshkov/i.test(head)) return 'libru';
-        return 'plain';
-      },
-
-      /* ---------- Normalization & provider stripping ---------- */
-      normalizeText(raw){
-        let t = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        t = t.split('\n').map(line => line.replace(/\s+$/,'')).join('\n');
-        t = t.replace(/\n{3,}/g, '\n\n');
-        return t;
-      },
-
-      stripGutenberg(text){
-        const start = text.match(/^\s*\*{3}\s*START OF (THIS|THE) PROJECT GUTENBERG EBOOK.*$/mi);
-        const end   = text.match(/^\s*\*{3}\s*END OF (THIS|THE) PROJECT GUTENBERG EBOOK.*$/mi);
-        const startIdx = start ? text.indexOf(start[0]) + start[0].length : 0;
-        const endIdx   = end ? text.indexOf(end[0]) : text.length;
-        let body = text.slice(startIdx, endIdx).trim();
-        if(body.replace(/\s/g,'').length < 200) body = text;
-        return body;
-      },
-
-      stripLibRu(text){
-        let lines = text.split('\n');
-
-        // Drop leading Lib.ru banner / URLs / emails / separators
-        let i = 0;
-        for(; i < Math.min(lines.length, 200); i++){
-          const L = lines[i].trim();
-          if (/^(Lib\.ru|Библиотека|http(s?):\/\/|ftp:\/\/|e-?mail:|mailto:)/i.test(L)) continue;
-          if (/^={3,}|^-{3,}|\*{3,}$/.test(L)) continue;
-          if (/^\s*$/.test(L)) {
-            const nextNonEmpty = lines.slice(i+1, i+12).find(s => s.trim().length>0) || '';
-            if (!/^(Lib\.ru|http|ftp|e-?mail)/i.test(nextNonEmpty)) { i++; break; }
-            continue;
-          }
-          if (L.length > 0 && !/Lib\.ru|http|ftp|e-?mail/i.test(L)) break;
-        }
-        lines = lines.slice(i);
-
-        // Trim trailing catalog/footer junk heuristically
-        while(lines.length && /^\s*$/.test(lines[lines.length-1])) lines.pop();
-        let tail = lines.slice(-40).join('\n');
-        if (/^\s*(Каталог|Library|Lib\.ru)/mi.test(tail)) {
-          lines = lines.slice(0, -40);
-        }
-
-        // Normalize dashes and spacing
-        let t = lines.join('\n')
-          .replace(/(^|\s)--(\s|$)/g, '$1—$2')    // -- -> em dash
-          .replace(/\s+—\s+/g, ' — ')             // dash spacing
-          .replace(/[ \t]+\n/g, '\n');
-
-        t = t.replace(/\n{3,}/g, '\n\n');
-        return t.trim();
-      },
-
-      /* ---------- Metadata ---------- */
-      extractMeta(text, provider){
-        const out = { title: '', author: '' };
-
-        if(provider === 'gutenberg'){
-          const tm = text.match(/^\s*Title:\s*(.+)$/mi);
-          const am = text.match(/^\s*Author:\s*(.+)$/mi);
-          if(tm) out.title  = tm[1].trim();
-          if(am) out.author = am[1].trim();
-        }
-
-        // Generic fallback
-        if(!out.title || !out.author){
-          const head = text.split('\n').slice(0, 120).map(s=>s.trim());
-          const nonEmpty = head.filter(s => s.length>0);
-          if(!out.title && nonEmpty.length) out.title = nonEmpty[0].replace(/^["«](.*)["»]$/,'$1');
-
-          const by1 = head.join('\n').match(/\bby\s+([A-Z][\w .,'-]+)\b/mi);
-          const by2 = head.join('\n').match(/\b(Автор|Сост\.?|Перевод):\s*([A-ЯЁA-Z][\w .,'-]+)\b/mi);
-          if(!out.author && by1) out.author = by1[1].trim();
-          if(!out.author && by2) out.author = by2[2].trim();
-        }
-        return out;
-      },
-
-      /* ---------- Segmentation ---------- */
-      segmentSections(text, provider){
-        const lines = text.split('\n');
-
-        // Notes / footnotes section (English or Russian)
-        let notesStart = -1;
-        for(let k = lines.length - 1; k >= 0; k--){
-          const L = lines[k].trim();
-          if (/^(footnotes?|notes|примечания|сноски)\s*$/i.test(L)){ notesStart = k; break; }
-        }
-        const bodyLines = notesStart > 0 ? lines.slice(0, notesStart) : lines.slice();
-        const footLines = notesStart > 0 ? lines.slice(notesStart) : [];
-
-        const sections = [];
-        let section = { title:'', headingLevel:'', content:[] };
-
-        // Chapter patterns
-        const reBook    = /^\s*(BOOK|КНИГА)\s+([IVXLCDM]+|\d+)(?:[.:)\-–— ](.*))?$/i;
-        const rePart    = /^\s*(PART|ЧАСТЬ)\s+([IVXLCDM]+|\d+)(?:[.:)\-–— ](.*))?$/i;
-        const reChapter = /^\s*(CHAPTER|ГЛАВА)\s+([IVXLCDM]+|\d+)(?:[.:)\-–— ](.*))?$/i;
-        const reAllCaps = /^[A-ZА-ЯЁ0-9 ,.'"«»\-:;!?]{6,}$/;
-
-        for(const raw of bodyLines){
-          const L = raw.trim();
-
-          // Scene breaks
-          if (/^(?:\*\s*\*\s*\*|\*\*\*|—\s*—\s*—|—{3,}|-{3,})$/.test(L)){
-            section.content.push('<hr/>');
-            continue;
-          }
-
-          const mBook = L.match(reBook);
-          const mPart = L.match(rePart);
-          const mChap = L.match(reChapter);
-
-          if(mBook || mPart || mChap || (provider==='libru' && reAllCaps.test(L) && L.length < 80)){
-            if(section.title || section.content.length) sections.push(section);
-            let label='', rest='';
-            if(mBook){ label = (mBook[1].toUpperCase()==='BOOK'?'BOOK':'КНИГА') + ' ' + mBook[2]; rest = mBook[3]||''; section={title:(label+(rest?': '+rest:'')), headingLevel:'H1', content:[]}; continue; }
-            if(mPart){ label = (mPart[1].toUpperCase()==='PART'?'PART':'ЧАСТЬ') + ' ' + mPart[2]; rest = mPart[3]||''; section={title:(label+(rest?': '+rest:'')), headingLevel:'H1', content:[]}; continue; }
-            if(mChap){ label = (mChap[1].toUpperCase()==='CHAPTER'?'CHAPTER':'ГЛАВА') + ' ' + mChap[2]; rest = mChap[3]||''; section={title:(label+(rest?': '+rest:'')), headingLevel:'H2', content:[]}; continue; }
-            section = { title: L, headingLevel:'H2', content:[] };
-            continue;
-          }
-          section.content.push(raw);
-        }
-        if(section.title || section.content.length) sections.push(section);
-
-        const footMap = this.parseFootnoteBodies(footLines.join('\n'));
-        sections.forEach((sec) => sec.html = this.convertLinesToHtml(sec.content, footMap));
-        return { sections, footMap };
-      },
-
-      /* ---------- Footnotes ---------- */
-      parseFootnoteBodies(block){
-        const map = {};
-        if(!block || block.trim().length===0) return map;
-        const lines = block.replace(/\r\n/g,'\n').split('\n');
-        let curId = null, acc = [];
-        const commit = ()=>{
-          if(curId){
-            let html = acc.join('\n').trim();
-            html = this.escapeHtml(html).replace(/\n\n+/g,'</p><p>').replace(/\n/g,' ');
-            map[curId] = '<p>'+html+'</p>';
-          }
-          curId = null; acc = [];
-        };
-        for(const line of lines){
-          const m = line.match(/^\s*(?:\[(\d+)]|(\d+)[\.\)]?)\s*(.*)$/);
-          if(m){
-            if(curId) commit();
-            const num = (m[1]||m[2]);
-            curId = 'fn'+num;
-            const rest = m[3]||'';
-            if(rest.trim().length) acc.push(rest);
-            continue;
-          }
-          if(curId===null) continue;
-          if(line.trim().length===0){ commit(); continue; }
-          acc.push(line);
-        }
-        commit();
-        return map;
-      },
-
-      convertLinesToHtml(lines, footMap){
-        let joined = lines.join('\n');
-        joined = joined.replace(/(\[([0-9]{1,4})\])/g, (_, full, num) => {
-          const id = 'fn'+num;
-          return `<sup class="footnote-ref" data-footnote-id="${id}">[${num}]</sup>`;
-        });
-
-        const parts = joined.split(/\n{2,}/);
-        const htmlParts = [];
-        for(let block of parts){
-          const trimmed = block.trim();
-          if(!trimmed) continue;
-          if(trimmed === '<hr/>' || trimmed === '<hr />'){ htmlParts.push('<hr/>'); continue; }
-          let safe = this.escapeHtmlExceptInjected(trimmed);
-          safe = safe.replace(/\n+/g,' ');
-          htmlParts.push('<p>'+safe+'</p>');
-        }
-        return htmlParts.join('\n');
-      },
-
-      /* ---------- Build HTML ---------- */
-      buildHtml(seg){
-        const out = [];
-        if(this.bookTitle) out.push(`<h1 id="heading-title">${this.escapeHtml(this.bookTitle)}</h1>`);
-        if(this.bookAuthor) out.push(`<p class="text-muted"><em>${this.escapeHtml(this.bookAuthor)}</em></p>`);
-        let hCounter = 0;
-        for(const s of seg.sections){
-          let tag = 'h2';
-          if(s.headingLevel==='H1') tag = 'h1';
-          if(s.title){
-            hCounter++;
-            out.push(`<${tag} id="heading-${hCounter}">${this.escapeHtml(s.title)}</${tag}>`);
-          }
-          out.push(s.html);
-        }
-        const ids = Object.keys(seg.footMap || {});
-        if(ids.length){
-          ids.forEach(id => out.push(`<aside data-footnote="${id}">${seg.footMap[id]}</aside>`));
-        }
-        return out.join('\n');
-      },
-
-      /* ---------- TOC & Navigation ---------- */
-      buildToc(){
-        this.toc = [];
-        const nodes = this.readerEl.querySelectorAll('h1, h2, h3');
-        let idx = 0;
-        nodes.forEach(n=>{
-          if(!n.id){ idx++; n.id = 'heading-auto-'+idx; }
-          this.toc.push({ id:n.id, text:n.textContent.trim(), level:n.tagName });
-        });
-      },
-      goto(id){
-        const target = document.getElementById(id);
-        if(!target) return;
-        const left = target.getBoundingClientRect().left - this.readerEl.getBoundingClientRect().left + this.readerEl.scrollLeft;
-        this.smoothScrollTo(left, 300);
-      },
-
-      /* ---------- Footnote popovers ---------- */
-      wireFootnotes(){
-        const map = {};
-        this.readerEl.querySelectorAll('aside[data-footnote]').forEach(aside=>{
-          map[aside.getAttribute('data-footnote')] = aside.innerHTML.trim();
-          aside.style.display = 'none';
-        });
-
-        this.readerEl.querySelectorAll('.footnote-ref[data-footnote-id]').forEach(ref=>{
-          const id = ref.getAttribute('data-footnote-id');
-          const html = map[id] || 'Footnote not found.';
-          const inst = new bootstrap.Popover(ref, { container:'body', placement:'auto', trigger:'click', html:true, content:html });
-          ref.addEventListener('shown.bs.popover', ()=>{
-            document.querySelectorAll('.footnote-ref').forEach(other=>{
-              if(other!==ref){ const o = bootstrap.Popover.getInstance(other); if(o) o.hide(); }
-            });
-          });
-        });
-
-        this.readerEl.addEventListener('scroll', ()=>{
-          document.querySelectorAll('.footnote-ref').forEach(el=>{
-            const o = bootstrap.Popover.getInstance(el); if(o) o.hide();
-          });
-        });
-      },
-
-      /* ---------- Typography & Theme ---------- */
-      applyTypography(){
-        const root = document.documentElement.style;
-        root.setProperty('--base-font-size', this.ui.fontSizePx + 'px');
-        root.setProperty('--page-padding', this.ui.pagePaddingPx + 'px');
-        const h = this.ui.fitViewportHeight ? 'calc(100vh - 160px)' : '80vh';
-        root.setProperty('--page-height', h);
-        setTimeout(()=>this.recomputePages(), 30);
-      },
-      applyTheme(){
-        this.themeClass = this.ui.theme==='dark' ? 'theme-dark' :
-                          this.ui.theme==='sepia' ? 'theme-sepia' : 'theme-light';
-      },
-
-      /* ---------- Paging ---------- */
-      recomputePages(){
-        const vw = this.readerEl.clientWidth || window.innerWidth;
-        if(vw <= 1){ this.ui.totalPageCount = 1; return; }
-        this.ui.totalPageCount = Math.max(1, Math.ceil(this.readerEl.scrollWidth / vw));
-        this.ui.currentPageIndex = Math.round(this.readerEl.scrollLeft / vw);
-      },
-      pageDisplay(){
-        return `Page ${this.ui.currentPageIndex+1} / ${this.ui.totalPageCount}`;
-      },
-      progressPercent(){
-        const max = this.readerEl.scrollWidth - this.readerEl.clientWidth;
-        if(max <= 0) return 100;
-        return Math.min(100, Math.max(0, (this.readerEl.scrollLeft / max) * 100));
-      },
-      prevPage(){
-        const vw = this.readerEl.clientWidth || window.innerWidth;
-        const target = Math.max(0, (this.ui.currentPageIndex - 1) * vw);
-        this.smoothScrollTo(target, 220);
-      },
-      nextPage(){
-        const vw = this.readerEl.clientWidth || window.innerWidth;
-        const idx = Math.min(this.ui.totalPageCount - 1, this.ui.currentPageIndex + 1);
-        this.smoothScrollTo(idx * vw, 220);
-      },
-      attachScrollHandlers(){
-        let snapTimer = null;
-        this.readerEl.addEventListener('scroll', ()=>{
-          const vw = this.readerEl.clientWidth || window.innerWidth;
-          this.ui.currentPageIndex = Math.round(this.readerEl.scrollLeft / vw);
-          if(snapTimer) clearTimeout(snapTimer);
-          snapTimer = setTimeout(()=>{ this.snapToNearest(); this.saveScroll(); }, 90);
-        }, { passive:true });
-
-        window.addEventListener('resize', ()=>{
-          this.applyTypography();
-          this.recomputePages();
-        });
-
-        window.addEventListener('keydown', (e)=>{
-          if(e.key==='ArrowRight' || e.key==='PageDown' || e.key===' '){ e.preventDefault(); this.nextPage(); }
-          if(e.key==='ArrowLeft'  || e.key==='PageUp'){ e.preventDefault(); this.prevPage(); }
-        }, { passive:false });
-      },
-      snapToNearest(){
-        const vw = this.readerEl.clientWidth || window.innerWidth;
-        const idx = Math.round(this.readerEl.scrollLeft / vw);
-        this.smoothScrollTo(idx * vw, 180);
-      },
-      smoothScrollTo(left, ms){
-        this.readerEl.scrollTo({ left, behavior:'smooth' });
-        setTimeout(()=>this.recomputePages(), ms + 50);
-      },
-
-      /* ---------- Resume ---------- */
-      saveScroll(){
-        if(!this.lastScrollKey) return;
-        const vw = this.readerEl.clientWidth || window.innerWidth;
-        const idx = Math.round(this.readerEl.scrollLeft / vw);
-        try { localStorage.setItem(this.lastScrollKey, String(idx)); } catch(e){}
-      },
-      restoreScroll(){
-        if(!this.lastScrollKey) return;
-        try {
-          const stored = parseInt(localStorage.getItem(this.lastScrollKey), 10);
-          if(!isNaN(stored)){
-            const vw = this.readerEl.clientWidth || window.innerWidth;
-            this.readerEl.scrollLeft = stored * vw;
-            this.ui.currentPageIndex = stored;
-            this.recomputePages();
-          }
-        } catch(e){}
-      },
-
-      /* ---------- Escaping helpers ---------- */
-      escapeHtml(s){
-        return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-      },
-      escapeHtmlExceptInjected(s){
-        let masked = s.replace(/<hr\/>/g,'[[[HR]]]')
-                      .replace(/<sup class="footnote-ref" data-footnote-id="fn\d+">\[\d+\]<\/sup>/g, m=>'[[[SUP:'+btoa(m)+']]]');
-        masked = this.escapeHtml(masked);
-        masked = masked.replace(/\[\[\[HR]]]/g,'<hr/>')
-                       .replace(/\[\[\[SUP:([A-Za-z0-9+/=]+)]]]/g, (_,b64)=>atob(b64));
-        return masked;
-      }
-    };
-  }
-  </script>
+  <!-- App -->
+  <script src="js/app.js"></script>
 </body>
 </html>

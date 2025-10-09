@@ -581,21 +581,26 @@ function bookReader(){
         const root = document.documentElement;
         const rs = root.style;
   
-        const w = this.pagesEl ? this.pagesEl.clientWidth : window.innerWidth;
-        this.pageWidthPx = Math.max(1, w);
-        rs.setProperty('--page-width', this.pageWidthPx + 'px');
+        const containerWidth = this.pagesEl ? this.pagesEl.clientWidth : window.innerWidth;
+        this.pageWidthPx = Math.max(1, Math.floor(containerWidth));
+        rs.setProperty('--page-width', `${this.pageWidthPx}px`);
   
-        const hCss = this.ui.fitViewportHeight ? 'calc(100vh - 160px)' : '80vh';
-        rs.setProperty('--page-height', hCss);
+        const toolbarEl = document.querySelector('.toolbar');
+        const footerEl = document.querySelector('.footer');
+        const toolbarHeight = toolbarEl ? toolbarEl.getBoundingClientRect().height : 0;
+        const footerHeight = footerEl ? footerEl.getBoundingClientRect().height : 0;
+        const structuralMargin = 24; // guard so text never sits under the footer/thermometer
   
-        const tmp = document.createElement('div');
-        tmp.style.position = 'absolute';
-        tmp.style.visibility = 'hidden';
-        tmp.style.height = 'var(--page-height)';
-        tmp.style.boxSizing = 'border-box';
-        document.body.appendChild(tmp);
-        this.pageHeightPx = tmp.getBoundingClientRect().height;
-        document.body.removeChild(tmp);
+        const viewportAllowance = window.innerHeight - toolbarHeight - footerHeight - structuralMargin;
+        const readingArea = this.pagesEl ? this.pagesEl.closest('.area') : null;
+        const areaHeight = readingArea ? readingArea.getBoundingClientRect().height : viewportAllowance;
+  
+        const targetHeight = this.ui.fitViewportHeight
+          ? Math.max(160, Math.min(Math.floor(viewportAllowance), Math.floor(areaHeight)))
+          : Math.max(160, Math.floor(window.innerHeight * 0.8));
+  
+        this.pageHeightPx = targetHeight;
+        rs.setProperty('--page-height', `${targetHeight}px`);
   
         rs.setProperty('--base-font-size', this.ui.fontSizePx + 'px');
         rs.setProperty('--page-padding', this.ui.pagePaddingPx + 'px');

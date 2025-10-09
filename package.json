@@ -1,0 +1,25 @@
+{
+  "name": "skazka",
+  "version": "1.0.0",
+  "description": "Skazka Reader turns plain `.txt` files into a comfortable, book-style reading experience in your browser. No accounts, no uploads, no conversions — just point it at a text file (local or online) and start reading with swipes or arrow keys.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node tests/run-tests.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MarcoPoloResearchLab/skazka.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/MarcoPoloResearchLab/skazka/issues"
+  },
+  "homepage": "https://github.com/MarcoPoloResearchLab/skazka#readme",
+  "devDependencies": {
+    "jsdom": "^27.0.0",
+    "puppeteer": "^24.23.0"
+  }
+}

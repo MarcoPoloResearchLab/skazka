@@ -390,83 +390,67 @@ function bookReader(){
       renderPages(flowHtml){
         this.pagesEl.innerHTML = '';
         this.applyTypography();
-        const widthPx = this.pageWidthPx;
-        const heightTolerancePx = 0.5;
-
+        const w = this.pageWidthPx;
+        const h = this.pageHeightPx;
+  
+        // Hidden staging root with flow content (acts as a queue)
         const stage = document.createElement('div');
         stage.style.position = 'absolute';
         stage.style.visibility = 'hidden';
         stage.style.pointerEvents = 'none';
         stage.style.left = '-99999px';
         stage.style.top = '0';
-        stage.style.width = widthPx + 'px';
+        stage.style.width = w + 'px';
         stage.innerHTML = flowHtml;
         document.body.appendChild(stage);
-
-        const measurePage = this.createPage();
-        measurePage.style.position = 'absolute';
-        measurePage.style.visibility = 'hidden';
-        measurePage.style.pointerEvents = 'none';
-        measurePage.style.left = '-99999px';
-        document.body.appendChild(measurePage);
-
-        const fitsMeasure = () => measurePage.scrollHeight <= (measurePage.clientHeight + heightTolerancePx);
-        const tryAppendMeasure = (node) => {
-          measurePage.appendChild(node);
-          if (fitsMeasure()){
-            return true;
-          }
-          measurePage.removeChild(node);
-          return false;
-        };
-        const measureWithCandidate = (candidate) => {
-          measurePage.appendChild(candidate);
-          const ok = fitsMeasure();
-          measurePage.removeChild(candidate);
-          return ok;
-        };
-        const flushMeasureToPage = () => {
-          if (!measurePage.childNodes.length) return;
-          const page = this.createPage();
-          while (measurePage.firstChild){
-            page.appendChild(measurePage.firstChild);
-          }
-          this.pagesEl.appendChild(page);
-        };
-
+  
+        let page = this.createPage();
+        this.pagesEl.appendChild(page);
+  
+        const fits = () => page.scrollHeight <= page.clientHeight;
+  
+        // consume stage.firstChild repeatedly to avoid index bugs
         while (stage.firstChild){
           const node = stage.firstChild;
-          if (tryAppendMeasure(node)){
-            continue;
+  
+          page.appendChild(node);
+          if (fits()){
+            continue; // good; consume next node
           }
-
-          // Current page is full, finalize it.
-          flushMeasureToPage();
-
+  
+          // overflow -> undo append
+          page.removeChild(node);
+  
+          // keep headings with following content; don't leave them as last line
+          const last = page.lastElementChild;
+          if (last && /^H[1-3]$/i.test(last.tagName)){
+            // move heading back in front of current node so it starts next page
+            stage.insertBefore(last, node);
+          }
+  
+          // If the overflowing node can be split, split and queue remainder
           if (this.isSplittableBlock(node)){
-            const parts = this.splitBlockForPage(node, measureWithCandidate);
+            const parts = this.splitBlockForPage(node, page);
             if (parts.first){
-              measurePage.appendChild(parts.first);
-              flushMeasureToPage();
+              page.appendChild(parts.first); // now fits by construction
             }
-            if (parts.remainder){
-              stage.insertBefore(parts.remainder, stage.firstChild);
-            } else if (!parts.first){
-              // Could not split; place original node alone on a fresh page.
-              measurePage.appendChild(node);
-              flushMeasureToPage();
-            }
+            // new page
+            page = this.createPage();
+            this.pagesEl.appendChild(page);
+  
+            // Put remainder (if any) at the front of the queue
+            if (parts.remainder) stage.insertBefore(parts.remainder, stage.firstChild);
           } else {
-            measurePage.appendChild(node);
-            flushMeasureToPage();
+            // non-splittable -> start a new page and place it there
+            page = this.createPage();
+            this.pagesEl.appendChild(page);
+            page.appendChild(node);
+            // if STILL doesn't fit (e.g., huge image), we just allow slight overflow
           }
         }
-
-        flushMeasureToPage();
-
+  
         document.body.removeChild(stage);
-        document.body.removeChild(measurePage);
-
+  
         this.recomputePages();
         this.pagesEl.scrollLeft = 0;
         this.ui.currentPageIndex = 0;
@@ -479,83 +463,56 @@ function bookReader(){
       },
   
       // Return {first, remainder} nodes that fit current page exactly.
-      splitBlockForPage(node, measureFits){
+      splitBlockForPage(node, page){
         const text = node.textContent || '';
-        if (!text.trim()){
-          return { first: node.cloneNode(true), remainder: null };
-        }
-
-        const tokens = text.split(/(\s+)/); // keep whitespace tokens
-
-        const buildFromTokens = (count) => {
-          const clone = node.cloneNode(false);
-          clone.textContent = tokens.slice(0, count).join('');
-          return clone;
+        if (!text.trim()){ return { first: node, remainder: null }; }
+  
+        const first = node.cloneNode(false);
+        const rem   = node.cloneNode(false);
+  
+        // try word-based split first
+        const tokens = text.split(/(\s+)/); // keep spaces
+        let lo = 1, hi = tokens.length, best = 0;
+  
+        const test = (count) => {
+          first.textContent = tokens.slice(0, count).join('');
+          page.appendChild(first);
+          const ok = page.scrollHeight <= page.clientHeight;
+          page.removeChild(first);
+          return ok;
         };
-
-        const buildRemainderFromTokens = (start) => {
-          const remainderText = tokens.slice(start).join('');
-          if (!remainderText.trim()) return null;
-          const clone = node.cloneNode(false);
-          clone.textContent = remainderText;
-          return clone;
-        };
-
-        let lo = 1;
-        let hi = tokens.length;
-        let best = 0;
-        let bestNode = null;
-
+  
         while (lo <= hi){
           const mid = Math.floor((lo + hi) / 2);
-          const candidate = buildFromTokens(mid);
-          if (measureFits(candidate)){
-            best = mid;
-            bestNode = candidate;
-            lo = mid + 1;
-          } else {
-            hi = mid - 1;
-          }
+          if (test(mid)){ best = mid; lo = mid + 1; } else { hi = mid - 1; }
         }
-
+  
         if (best === 0){
-          const fullText = text;
-          let loC = 1;
-          let hiC = Math.min(fullText.length, 2000);
-          let bestC = 0;
-          let bestNodeC = null;
-
+          // fall back to char-based split to guarantee progress
+          let loC = 1, hiC = Math.min(text.length, 1200), bestC = 0;
+          const testC = (c) => {
+            first.textContent = text.slice(0, c);
+            page.appendChild(first);
+            const ok = page.scrollHeight <= page.clientHeight;
+            page.removeChild(first);
+            return ok;
+          };
           while (loC <= hiC){
             const midC = Math.floor((loC + hiC) / 2);
-            const candidate = node.cloneNode(false);
-            candidate.textContent = fullText.slice(0, midC);
-            if (measureFits(candidate)){
-              bestC = midC;
-              bestNodeC = candidate;
-              loC = midC + 1;
-            } else {
-              hiC = midC - 1;
-            }
+            if (testC(midC)){ bestC = midC; loC = midC + 1; } else { hiC = midC - 1; }
           }
-
           if (bestC === 0){
+            // give up: put whole node on next page
             return { first: null, remainder: node };
           }
-
-          const remainderText = fullText.slice(bestC);
-          const remainderNode = remainderText.trim() ? (() => {
-            const clone = node.cloneNode(false);
-            clone.textContent = remainderText;
-            return clone;
-          })() : null;
-
-          return { first: bestNodeC, remainder: remainderNode };
+          first.textContent = text.slice(0, bestC);
+          rem.textContent   = text.slice(bestC);
+          return { first, remainder: rem.textContent.trim() ? rem : null };
         }
-
-        return {
-          first: bestNode,
-          remainder: buildRemainderFromTokens(best),
-        };
+  
+        first.textContent = tokens.slice(0, best).join('');
+        rem.textContent   = tokens.slice(best).join('');
+        return { first, remainder: rem.textContent.trim() ? rem : null };
       },
   
       createPage(){
@@ -624,21 +581,26 @@ function bookReader(){
         const root = document.documentElement;
         const rs = root.style;
   
-        const w = this.pagesEl ? this.pagesEl.clientWidth : window.innerWidth;
-        this.pageWidthPx = Math.max(1, w);
-        rs.setProperty('--page-width', this.pageWidthPx + 'px');
+        const containerWidth = this.pagesEl ? this.pagesEl.clientWidth : window.innerWidth;
+        this.pageWidthPx = Math.max(1, Math.floor(containerWidth));
+        rs.setProperty('--page-width', `${this.pageWidthPx}px`);
   
-        const hCss = this.ui.fitViewportHeight ? 'calc(100vh - 160px)' : '80vh';
-        rs.setProperty('--page-height', hCss);
+        const toolbarEl = document.querySelector('.toolbar');
+        const footerEl = document.querySelector('.footer');
+        const toolbarHeight = toolbarEl ? toolbarEl.getBoundingClientRect().height : 0;
+        const footerHeight = footerEl ? footerEl.getBoundingClientRect().height : 0;
+        const structuralMargin = 24; // guard so text never sits under the footer/thermometer
   
-        const tmp = document.createElement('div');
-        tmp.style.position = 'absolute';
-        tmp.style.visibility = 'hidden';
-        tmp.style.height = 'var(--page-height)';
-        tmp.style.boxSizing = 'border-box';
-        document.body.appendChild(tmp);
-        this.pageHeightPx = tmp.getBoundingClientRect().height;
-        document.body.removeChild(tmp);
+        const viewportAllowance = window.innerHeight - toolbarHeight - footerHeight - structuralMargin;
+        const readingArea = this.pagesEl ? this.pagesEl.closest('.area') : null;
+        const areaHeight = readingArea ? readingArea.getBoundingClientRect().height : viewportAllowance;
+  
+        const targetHeight = this.ui.fitViewportHeight
+          ? Math.max(160, Math.min(Math.floor(viewportAllowance), Math.floor(areaHeight)))
+          : Math.max(160, Math.floor(window.innerHeight * 0.8));
+  
+        this.pageHeightPx = targetHeight;
+        rs.setProperty('--page-height', `${targetHeight}px`);
   
         rs.setProperty('--base-font-size', this.ui.fontSizePx + 'px');
         rs.setProperty('--page-padding', this.ui.pagePaddingPx + 'px');

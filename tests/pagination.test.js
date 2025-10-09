@@ -28,7 +28,11 @@ function buildHarnessHtml({ pageWidth, pageHeight }) {
           --page-bg: #ffffff;
           --page-fg: #111111;
         }
-        body { margin:0; }
+        body { margin:0; height:100vh; display:flex; }
+        .shell { display:flex; flex-direction:column; height:100vh; flex:1 1 auto; }
+        .toolbar { flex:0 0 auto; height:72px; border-bottom:1px solid #ccc; }
+        .area { flex:1 1 auto; display:flex; background:var(--page-bg); color:var(--page-fg); }
+        .footer { flex:0 0 auto; height:64px; border-top:1px solid #ccc; }
         .pages {
           display:flex;
           overflow-x:auto;
@@ -54,7 +58,13 @@ function buildHarnessHtml({ pageWidth, pageHeight }) {
       </style>
     </head>
     <body>
-      <div id="readerPages" class="pages"></div>
+      <div class="shell">
+        <div class="toolbar"></div>
+        <div class="area">
+          <div id="readerPages" class="pages" style="flex:1 1 auto;"></div>
+        </div>
+        <div class="footer"></div>
+      </div>
       <script>${appSource}</script>
     </body>
   </html>`;
@@ -70,6 +80,12 @@ const testCases = [
     harnessHtml: buildHarnessHtml({ pageWidth: 1024, pageHeight: 'calc(100vh - 160px)' }),
     flowHtml: LINE_BREAK_FLOW,
     expectedLastToken: '200',
+  },
+  {
+    name: 'LongParagraph_WordsWrap',
+    harnessHtml: buildHarnessHtml({ pageWidth: 1024, pageHeight: 'calc(100vh - 160px)' }),
+    flowHtml: `<p>${Array.from({ length: 2000 }, (_, index) => `word${index + 1}`).join(' ')}</p>`,
+    expectedLastToken: 'word2000',
   },
 ];
 
@@ -89,10 +105,12 @@ module.exports = async function runPaginationTests() {
         reader.applyTypography();
         reader.renderPages(flowHtml);
 
-        const pages = Array.from(reader.pagesEl.children);
-        const overflowDiffs = pages.map((node) => node.scrollHeight - node.clientHeight);
-        const overflowCount = overflowDiffs.filter((diff) => diff > 0.5).length;
-        const trailingToken = (pages.at(-1)?.textContent || '').trim().split(/\s+/).pop() || '';
+      const pages = Array.from(reader.pagesEl.children);
+      const overflowDiffs = pages.map((node) => node.scrollHeight - node.clientHeight);
+      const overflowCount = overflowDiffs.filter((diff) => diff > 0.5).length;
+      const combinedText = pages.map((node) => (node.textContent || '').trim()).join(' ').trim();
+      const tokens = combinedText ? combinedText.split(/\s+/) : [];
+      const trailingToken = tokens.length ? tokens[tokens.length - 1] : '';
 
         return {
           overflowCount,

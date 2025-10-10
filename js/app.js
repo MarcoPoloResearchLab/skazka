@@ -447,15 +447,23 @@ function bookReader(){
         joined = this.injectFootnoteReferences(joined);
   
         const parts = joined.split(/\n{2,}/);
-        const htmlParts = [];
+        const normalizedBlocks = [];
         for(let block of parts){
           const trimmed = block.trim();
           if(!trimmed) continue;
-          if(trimmed === '<hr/>' || trimmed === '<hr />'){ htmlParts.push('<hr/>'); continue; }
+          if(trimmed === '<hr/>' || trimmed === '<hr />'){ normalizedBlocks.push('<hr/>'); continue; }
           let safe = this.escapeHtmlExceptInjected(trimmed);
           safe = safe.replace(/\n+/g,' ');
-          htmlParts.push('<p>'+safe+'</p>');
+          if (normalizedBlocks.length && this.shouldMergeParagraphBlocks(normalizedBlocks[normalizedBlocks.length - 1], safe)) {
+            normalizedBlocks[normalizedBlocks.length - 1] = normalizedBlocks[normalizedBlocks.length - 1] + ' ' + safe;
+          } else {
+            normalizedBlocks.push(safe);
+          }
         }
+        const htmlParts = normalizedBlocks.map((content)=>{
+          if (content === '<hr/>') return content;
+          return '<p>' + content + '</p>';
+        });
         return htmlParts.join('\n');
       },
   
@@ -845,7 +853,23 @@ function bookReader(){
         }
         return index;
       },
-  
+      shouldMergeParagraphBlocks(prev, next){
+        if (!prev || !next) return false;
+        if (prev === '<hr/>' || next === '<hr/>') return false;
+        const prevTrim = prev.trim();
+        const nextTrim = next.trim();
+        if (!prevTrim || !nextTrim) return false;
+        if (!/(<\/sup>|\[[0-9]+\])\s*$/.test(prevTrim)) return false;
+
+        const strippedNext = nextTrim.replace(/^["'«»„“”‚‛\(\[]+/, '');
+        if (!strippedNext) return false;
+        const firstChar = strippedNext.charAt(0);
+        const isLetter = /[A-Za-zÀ-ÖØ-öø-ÿĀ-žЀ-ӿ]/.test(firstChar);
+        if (!isLetter) return false;
+        const isLower = firstChar === firstChar.toLowerCase() && firstChar !== firstChar.toUpperCase();
+        return isLower;
+      },
+
       createPage(){
         const div = document.createElement('div');
         div.className = 'page';

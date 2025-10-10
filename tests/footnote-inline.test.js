@@ -18,7 +18,7 @@ module.exports = async function runFootnoteInlineTests() {
     await page.setViewport({ width: 1280, height: 1200 });
     await page.setContent(buildReaderHarnessHtml(), { waitUntil: 'domcontentloaded' });
 
-    const stats = await page.evaluate((snippet) => {
+    const result = await page.evaluate((snippet) => {
       const reader = bookReader();
       reader.pagesEl = document.getElementById('readerPages');
       reader.applyTypography();
@@ -31,7 +31,7 @@ module.exports = async function runFootnoteInlineTests() {
         reader.renderPages(flowHtml);
 
         const pages = Array.from(reader.pagesEl.children);
-        const { dangling, leading } = pages.reduce((sum, pageEl) => {
+        const totals = pages.reduce((sum, pageEl) => {
           const refs = Array.from(pageEl.querySelectorAll('sup.footnote-ref'));
           const invalid = refs.filter((ref) => {
             const parent = ref.parentElement;
@@ -49,19 +49,33 @@ module.exports = async function runFootnoteInlineTests() {
           };
         }, { dangling: 0, leading: 0 });
 
-        if (dangling.dangling > 0 || dangling.leading > 0) {
-          return dangling;
+        if (totals.dangling > 0 || totals.leading > 0) {
+          return { stats: totals, merged: '' };
         }
       }
 
-      return { dangling: 0, leading: 0 };
+      const mergedFlow = reader.convertLinesToHtml([
+        'В некиим [1]',
+        '',
+        'царстве, в некиим государстве жил-был богатый купец, именитый человек. Много у него было всякого богатства, дорогих товаров заморских, жемчугу, драгоценных камениев, золотой и серебряной казны[2]',
+        '',
+        'и было у того купца три дочери, все три красавицы писаные, а меньшая лучше всех; и любил он дочерей своих',
+      ], {});
+
+      return { stats: { dangling: 0, leading: 0 }, merged: mergedFlow };
     }, SNIPPET_HTML);
 
-    assertEqual(stats.leading, 0, 'Footnote references must not begin a paragraph after pagination');
+    assertEqual(result.stats.leading, 0, 'Footnote references must not begin a paragraph after pagination');
     assertEqual(
-      stats.dangling,
+      result.stats.dangling,
       0,
       'Footnote references must remain inline within paragraph content across pagination',
+    );
+
+    assertEqual(
+      result.merged.includes('</sup> и '),
+      true,
+      'Footnote paragraphs produced from raw text must keep the sentence inline after footnote markers',
     );
   } finally {
     await browser.close();

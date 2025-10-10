@@ -52,4 +52,5 @@ module.exports = {
   buildReaderHarnessHtml,
   APP_JS_PATH,
   INDEX_HTML_PATH,
+  inlineStyles,
 };

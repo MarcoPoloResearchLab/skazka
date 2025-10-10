@@ -1,4 +1,6 @@
 const PAGE_PADDING_PX = 48;
+const PAGE_TURN_ANIMATION_MS = 450;
+const PAGE_TURN_CLASS = 'page--corner-flip';
 
 function bookReader(){
     return {
@@ -33,6 +35,7 @@ function bookReader(){
       pagesEl: null,
       pageWidthPx: 0,
       pageHeightPx: 0,
+      pageTurnTimers: new Map(),
   
       init(){
         this.pagesEl = this.$refs.readerPages || document.getElementById('readerPages');
@@ -481,6 +484,7 @@ function bookReader(){
       /* ---------- Pagination renderer (queue-based; no drops) ---------- */
       renderPages(flowHtml, options = {}){
         const { preserveRatio = null } = options;
+        this.clearPageTurnEffects();
         this.pagesEl.innerHTML = '';
         this.applyTypography();
         const w = this.pageWidthPx;
@@ -765,9 +769,40 @@ function bookReader(){
         const current = Math.min(total, Math.max(1, this.ui.currentPageIndex + 1));
         return `${total}/${current}`;
       },
+      triggerPageTurnEffect(index){
+        if (!this.pagesEl) return;
+        const target = this.pagesEl.children[index];
+        if (!target) return;
+
+        const existingTimeout = this.pageTurnTimers.get(target);
+        if (existingTimeout){
+          clearTimeout(existingTimeout);
+        }
+
+        target.classList.remove(PAGE_TURN_CLASS);
+        // force reflow so re-adding the class restarts the animation
+        void target.offsetWidth;
+        target.classList.add(PAGE_TURN_CLASS);
+
+        const timeoutId = window.setTimeout(()=>{
+          target.classList.remove(PAGE_TURN_CLASS);
+          this.pageTurnTimers.delete(target);
+        }, PAGE_TURN_ANIMATION_MS);
+        this.pageTurnTimers.set(target, timeoutId);
+      },
+      clearPageTurnEffects(){
+        for (const timeoutId of this.pageTurnTimers.values()){
+          clearTimeout(timeoutId);
+        }
+        this.pageTurnTimers.clear();
+        if (!this.pagesEl) return;
+        const pages = Array.from(this.pagesEl.children);
+        pages.forEach((pageEl)=>pageEl.classList.remove(PAGE_TURN_CLASS));
+      },
       prevPage(){ this.scrollToPage(Math.max(0, this.ui.currentPageIndex - 1), 220); },
       nextPage(){ this.scrollToPage(Math.min(this.ui.totalPageCount - 1, this.ui.currentPageIndex + 1), 220); },
       scrollToPage(index, ms){
+        this.triggerPageTurnEffect(index);
         const left = index * this.pageWidthPx;
         this.pagesEl.scrollTo({ left, behavior:'smooth' });
         setTimeout(()=>this.recomputePages(), (ms||0) + 50);

@@ -28,6 +28,18 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## Improvements
 
+1. The page opnes with 100% termomemeter. It should open at 0%
+2. As I brows pages the thermometer nover grows and stays at 0%. The page progress stats works. The progress bar shall grow in proportion to the pages I browsed
+
+- [ ] [SZ-03] Texts have footnotes, often defined as (1) in the text and then (1) later in the text with an explanation but may use a different syntax, such as 1) in the text and 1) later. The defining charchteristic would be a leter reference to that number with an explanation.. Develop a generalized system to detect and display footnotes
+
+- [ ] [SZ-04] Improve the text analysis in reagrds to notes vs text, title and author using @assets/texts/"В. Ф. Одоевский. Городок в табакерке. Текст произведения.txt" which has a different format from @assets/texts/alenkij.txt. Generalize the approch and extract comomonalities in the sahred abstract layer
+
 ## BugFixes
+
+- [ ] [SZ-05] TOC does not respect the theme
+- [ ] [SZ-06] Text size slider doesn not change the size of text
+- [ ] [SZ-07] the second slider does nothing
+- [ ] [SZ-08] The page browsing is represented with two pairs of angular brackerts -- in the top bar and on the page side. There must be only one pair of angular brackets, on the sides of the page. 
 
 ## Maintenance

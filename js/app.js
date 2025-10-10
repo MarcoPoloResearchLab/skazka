@@ -620,9 +620,28 @@ function bookReader(){
         return `Page ${this.ui.currentPageIndex+1} / ${this.ui.totalPageCount}`;
       },
       progressPercent(){
-        const max = this.pagesEl.scrollWidth - this.pagesEl.clientWidth;
-        if(max <= 0) return 100;
-        return Math.min(100, Math.max(0, (this.pagesEl.scrollLeft / max) * 100));
+        const total = Math.max(1, this.ui.totalPageCount);
+        const lastIndex = total - 1;
+
+        if (!this.pagesEl) {
+          const fallbackRatio = lastIndex > 0 ? this.ui.currentPageIndex / lastIndex : 0;
+          return Math.min(100, Math.max(0, fallbackRatio * 100));
+        }
+
+        if (lastIndex <= 0) {
+          return 0;
+        }
+
+        const maxScroll = lastIndex * this.pageWidthPx;
+        const ratioFromScroll = maxScroll > 0 ? this.pagesEl.scrollLeft / maxScroll : Number.NaN;
+        const ratioFromIndex = this.ui.currentPageIndex / lastIndex;
+        const ratio = Number.isFinite(ratioFromScroll) ? Math.max(ratioFromScroll, ratioFromIndex) : ratioFromIndex;
+        return Math.min(100, Math.max(0, ratio * 100));
+      },
+      progressPageSummary(){
+        const total = Math.max(1, this.ui.totalPageCount);
+        const current = Math.min(total, Math.max(1, this.ui.currentPageIndex + 1));
+        return `${total}/${current}`;
       },
       prevPage(){ this.scrollToPage(Math.max(0, this.ui.currentPageIndex - 1), 220); },
       nextPage(){ this.scrollToPage(Math.min(this.ui.totalPageCount - 1, this.ui.currentPageIndex + 1), 220); },

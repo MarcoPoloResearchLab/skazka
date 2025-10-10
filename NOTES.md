@@ -28,10 +28,6 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## Improvements
 
-- [ ] [SZ-03] Texts have footnotes, often defined as (1) in the text and then (1) later in the text with an explanation but may use a different syntax, such as 1) in the text and 1) later. The defining charchteristic would be a leter reference to that number with an explanation.. Develop a generalized system to detect and display footnotes
-
-- [ ] [SZ-04] Improve the text analysis in reagrds to notes vs text, title and author using @assets/texts/"В. Ф. Одоевский. Городок в табакерке. Текст произведения.txt" which has a different format from @assets/texts/alenkij.txt. Generalize the approch and extract comomonalities in the sahred abstract layer
-
 ## BugFixes
 
 ## Maintenance

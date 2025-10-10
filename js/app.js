@@ -186,6 +186,7 @@ function bookReader(){
         try {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, 'text/html');
+          doc.querySelectorAll('script, style, form, select, option, noscript').forEach(el => el.remove());
           const pres = Array.from(doc.querySelectorAll('pre'));
           if (pres.length) return pres.map(pre => pre.innerText.replace(/\r\n/g,'\n')).join('\n\n').trim();
           doc.querySelectorAll('br').forEach(br => br.replaceWith(doc.createTextNode('\n')));
@@ -197,16 +198,32 @@ function bookReader(){
       detectProvider(text){
         const head = text.slice(0, 4000);
         if (/PROJECT GUTENBERG/i.test(head) || /\*\*\*\s*START OF (THIS|THE) PROJECT GUTENBERG/i.test(head)) return 'gutenberg';
-        if (/Lib\.ru|Библиотека Максима Мошкова|moshkov/i.test(head)) return 'libru';
+        if (/Lib\.ru|Библиотека Максима Мошкова|moshkov|ilibrary\.ru/i.test(head)) return 'libru';
         return 'plain';
       },
   
       /* ---------- Normalization & provider stripping ---------- */
       normalizeText(raw){
         let t = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        t = t.split('\n').map(line => line.replace(/\s+$/,'')).join('\n');
-        t = t.replace(/\n{3,}/g, '\n\n');
-        return t;
+        t = t.replace(/<https?:\/\/[^>\s]+>/gi, '');
+        t = t.replace(/<#[^>]*>/gi, '');
+        t = t.replace(/<[^>\n]+>/g, ' ');
+        const dropTokens = /\b(Fb2\.zip|Epub|Содержание|Fine HTML|Printed version|Lib\.ru html|txt\(Word,[^)]+\))/gi;
+        const lines = t.split('\n').map(line => line.replace(dropTokens, '').replace(/\s+$/,''));
+        const filtered = [];
+        for (const line of lines){
+          const trimmed = line.trim();
+          if (!trimmed){ filtered.push(''); continue; }
+          if (/^(https?:\/\/|ftp:\/\/|mailto:)/i.test(trimmed)) continue;
+          if (/^(option value|Авторы|Автор:)\s*$/i.test(trimmed)) continue;
+          if (/^(lib\.ru html|fine html|printed version|fb2\.zip|epub|txt\(word)/i.test(trimmed)) continue;
+          if (/^\*{3,}$/i.test(trimmed)) continue;
+          if (/^\s*\[[^\]]+\]\s*$/i.test(trimmed) && trimmed.toLowerCase().includes('lib\.ru')) continue;
+          filtered.push(line);
+        }
+        let joined = filtered.join('\n');
+        joined = joined.replace(/\n{3,}/g, '\n\n');
+        return joined.trim();
       },
   
       stripGutenberg(text){
@@ -224,7 +241,7 @@ function bookReader(){
         let i = 0;
         for(; i < Math.min(lines.length, 200); i++){
           const L = lines[i].trim();
-          if (/^(Lib\.ru|Библиотека|http(s?):\/\/|ftp:\/\/|e-?mail:|mailto:)/i.test(L)) continue;
+          if (/^(Lib\.ru|Библиотека|ilibrary|http(s?):\/\/|ftp:\/\/|e-?mail:|mailto:)/i.test(L)) continue;
           if (/^={3,}|^-{3,}|\*{3,}$/.test(L)) continue;
           if (/^\s*$/.test(L)) {
             const nextNonEmpty = lines.slice(i+1, i+12).find(s => s.trim().length>0) || '';
@@ -236,7 +253,7 @@ function bookReader(){
         lines = lines.slice(i);
         while(lines.length && /^\s*$/.test(lines[lines.length-1])) lines.pop();
         const tail = lines.slice(-40).join('\n');
-        if (/^\s*(Каталог|Library|Lib\.ru)/mi.test(tail)) lines = lines.slice(0, -40);
+        if (/^\s*(Каталог|Library|Lib\.ru|ilibrary)/mi.test(tail)) lines = lines.slice(0, -40);
         let t = lines.join('\n')
           .replace(/(^|\s)--(\s|$)/g, '$1—$2')
           .replace(/\s+—\s+/g, ' — ')
@@ -255,13 +272,88 @@ function bookReader(){
           if(am) out.author = am[1].trim();
         }
         if(!out.title || !out.author){
-          const head = text.split('\n').slice(0, 120).map(s=>s.trim());
+          const head = text.split('\n').slice(0, 160).map(s=>s.trim());
+          const cleanedHead = head.filter(line => line.length > 0 && !/^https?:\/\//i.test(line));
+          if(!out.title){
+            const quotedCandidates = [];
+            cleanedHead.forEach((line)=>{
+              for (const m of line.matchAll(/[«"](.*?)[»"]/g)){
+                const cand = (m[1]||'').trim();
+                if (cand.length >= 3 && cand.length <= 80) quotedCandidates.push(cand);
+              }
+            });
+            if (quotedCandidates.length){
+              quotedCandidates.sort((a,b)=>b.length - a.length);
+              out.title = quotedCandidates[0].replace(/^[«"]|["»]$/g,'').trim();
+            }
+          }
           const nonEmpty = head.filter(s => s.length>0);
           if(!out.title && nonEmpty.length) out.title = nonEmpty[0].replace(/^["«](.*)["»]$/,'$1');
           const by1 = head.join('\n').match(/\bby\s+([A-Z][\w .,'-]+)\b/mi);
           const by2 = head.join('\n').match(/\b(Автор|Сост\.?|Перевод):\s*([A-ЯЁA-Z][\w .,'-]+)\b/mi);
           if(!out.author && by1) out.author = by1[1].trim();
           if(!out.author && by2) out.author = by2[2].trim();
+          if(!out.author){
+            for(const line of cleanedHead){
+              const fullNameMatch = line.match(/([\p{Lu}][\p{L}\p{M}\.-]+ [\p{Lu}][\p{L}\p{M}\.-]+(?: [\p{Lu}][\p{L}\p{M}\.-]+)?)/u);
+              if(fullNameMatch){
+                const candidate = fullNameMatch[1].trim();
+                if (candidate.split(' ').length >= 2 && !/\d/.test(candidate)){
+                  out.author = candidate.replace(/\s*\(.*/, '').trim().replace(/\.$/, '');
+                  break;
+                }
+              }
+            }
+          }
+          if ((!out.title || out.title.includes('...')) && out.author){
+            const authorLine = cleanedHead.find(line => line.includes(out.author));
+            if (authorLine){
+              const idx = authorLine.indexOf(out.author) + out.author.length;
+              const candidate = authorLine
+                .slice(idx)
+                .replace(/[.\-:]+/, ' ')
+                .replace(/Содержание/gi, '')
+                .trim()
+                .replace(/\s+/g, ' ');
+              if (candidate.length >= 3){
+                out.title = candidate;
+              }
+            }
+          }
+          if(!out.author){
+            for(const line of cleanedHead){
+              const nameWithInitials = line.match(/((?:[\p{Lu}]\.\s*){1,2}[\p{Lu}][\p{L}\p{M}-]{2,})/u);
+              if(nameWithInitials){
+                const candidate = nameWithInitials[1].trim();
+                if (!/\d/.test(candidate)){
+                  out.author = candidate.replace(/\.$/, '');
+                  break;
+                }
+              }
+            }
+          }
+          if(!out.author){
+            for(const line of cleanedHead){
+              const byVerb = line.match(/(?:писал|записал|сочинил|создал)\s+([A-ZА-ЯЁ][\w .-]+)/i);
+              if(byVerb){
+                out.author = byVerb[1].replace(/\s*\(.*/, '').trim();
+                break;
+              }
+            }
+          }
+          const normalizedTitle = (out.title || '').replace(/\W+/g,'').toLowerCase();
+          const normalizedAuthor = (out.author || '').replace(/\W+/g,'').toLowerCase();
+          if(!out.title || normalizedTitle === normalizedAuthor){
+            const headingCandidate = cleanedHead.find(line=>{
+              if (out.author && line.includes(out.author)) return false;
+              if (line.length === 0 || line.length > 90) return false;
+              if (/\d{4}/.test(line)) return false;
+              return /^[\p{Lu}]/u.test(line);
+            });
+            if (headingCandidate){
+              out.title = headingCandidate.replace(/\s+/g,' ').trim();
+            }
+          }
         }
         return out;
       },
@@ -330,12 +422,12 @@ function bookReader(){
           curId = null; acc = [];
         };
         for(const line of lines){
-          const m = line.match(/^\s*(?:\[(\d+)]|(\d+)[\.\)]?)\s*(.*)$/);
+          const m = line.match(/^\s*(?:\[(\d+)]|(\d+)[\.\)]?|\((\d+)\))\s*(.*)$/);
           if(m){
             if(curId) commit();
-            const num = (m[1]||m[2]);
-            curId = 'fn'+num;
-            const rest = m[3]||'';
+            const num = (m[1]||m[2]||m[3]);
+            curId = num ? 'fn'+num : null;
+            const rest = m[4]||'';
             if(rest.trim().length) acc.push(rest);
             continue;
           }
@@ -349,10 +441,7 @@ function bookReader(){
   
       convertLinesToHtml(lines, footMap){
         let joined = lines.join('\n');
-        joined = joined.replace(/(\[([0-9]{1,4})\])/g, (_, full, num) => {
-          const id = 'fn'+num;
-          return `<sup class="footnote-ref" data-footnote-id="${id}">[${num}]</sup>`;
-        });
+        joined = this.injectFootnoteReferences(joined);
   
         const parts = joined.split(/\n{2,}/);
         const htmlParts = [];
@@ -726,6 +815,29 @@ function bookReader(){
         masked = masked.replace(/\[\[\[HR]]]/g,'<hr/>')
                        .replace(/\[\[\[SUP:([A-Za-z0-9+/=]+)]]]/g, (_,b64)=>atob(b64));
         return masked;
+      },
+      injectFootnoteReferences(text){
+        const toSup = (num) => `<sup class="footnote-ref" data-footnote-id="fn${num}">[${num}]</sup>`;
+        const shouldConvert = (str, offset)=>{
+          for(let i = offset - 1; i >= 0; i--){
+            const ch = str[i];
+            if (ch === '\n' || ch === '\r') return false;
+            if (!/\s/.test(ch)) return !/\d/.test(ch);
+          }
+          return false;
+        };
+        let out = String(text || '');
+        out = out.replace(/\[(\d{1,3})]/g, (_, num)=>toSup(num));
+        out = out.replace(/\((\d{1,3})\)/g, (full, num, offset, str)=>{
+          return shouldConvert(str, offset) ? toSup(num) : full;
+        });
+        out = out.replace(/\b(\d{1,3})\)(?!\w)/g, (full, num, offset, str)=>{
+          return shouldConvert(str, offset) ? toSup(num) : full;
+        });
+        out = out.replace(/\b(\d{1,3})\.(?!\d)/g, (full, num, offset, str)=>{
+          return shouldConvert(str, offset) ? toSup(num) : full;
+        });
+        return out;
       }
     };
   }

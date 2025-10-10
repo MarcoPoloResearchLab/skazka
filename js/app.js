@@ -21,6 +21,8 @@ function bookReader(){
       lastRaw: { buffer: null, url: null, name: null, provider: null },
       usedEncoding: null,
       skipRestoreOnce: false, // show page 1 on fresh loads
+      lastFlowHtml: '',
+      footnoteScrollHandlerAttached: false,
   
       /* ---------- Book state ---------- */
       bookTitle: '',
@@ -110,7 +112,8 @@ function bookReader(){
   
         const segmented = this.segmentSections(stripped, effectiveProvider);
         const contentHtml = this.buildFlowHtml(segmented);
-  
+        this.lastFlowHtml = contentHtml;
+
         this.renderPages(contentHtml);
   
         queueMicrotask(() => {
@@ -387,11 +390,13 @@ function bookReader(){
       },
   
       /* ---------- Pagination renderer (queue-based; no drops) ---------- */
-      renderPages(flowHtml){
+      renderPages(flowHtml, options = {}){
+        const { preserveRatio = null } = options;
         this.pagesEl.innerHTML = '';
         this.applyTypography();
         const w = this.pageWidthPx;
         const h = this.pageHeightPx;
+        this.lastFlowHtml = flowHtml;
   
         // Hidden staging root with flow content (acts as a queue)
         const stage = document.createElement('div');
@@ -452,8 +457,17 @@ function bookReader(){
         document.body.removeChild(stage);
   
         this.recomputePages();
-        this.pagesEl.scrollLeft = 0;
-        this.ui.currentPageIndex = 0;
+        const maxIndex = Math.max(1, this.ui.totalPageCount - 1);
+        if (typeof preserveRatio === 'number' && maxIndex > 0) {
+          const clamped = Math.min(1, Math.max(0, preserveRatio));
+          const targetIndex = Math.max(0, Math.min(this.ui.totalPageCount - 1, Math.round(clamped * maxIndex)));
+          this.pagesEl.scrollLeft = targetIndex * this.pageWidthPx;
+          this.ui.currentPageIndex = targetIndex;
+          this.recomputePages();
+        } else {
+          this.pagesEl.scrollLeft = 0;
+          this.ui.currentPageIndex = 0;
+        }
       },
   
       isSplittableBlock(node){
@@ -569,14 +583,36 @@ function bookReader(){
           new bootstrap.Popover(ref, { container:'body', placement:'auto', trigger:'click', html:true, content:html });
         });
   
-        this.pagesEl.addEventListener('scroll', ()=>{
-          document.querySelectorAll('.footnote-ref').forEach(el=>{
-            const o = bootstrap.Popover.getInstance(el); if(o) o.hide();
+        if (!this.footnoteScrollHandlerAttached) {
+          this.pagesEl.addEventListener('scroll', ()=>{
+            document.querySelectorAll('.footnote-ref').forEach(el=>{
+              const o = bootstrap.Popover.getInstance(el); if(o) o.hide();
+            });
           });
-        });
+          this.footnoteScrollHandlerAttached = true;
+        }
       },
   
       /* ---------- Typography & Theme ---------- */
+      handleFontSizeSliderInput(){
+        this.applyTypography();
+        this.rebuildPagesAfterTypographyChange();
+      },
+      handlePagePaddingSliderInput(){
+        this.applyTypography();
+        this.rebuildPagesAfterTypographyChange();
+      },
+      rebuildPagesAfterTypographyChange(){
+        if (!this.lastFlowHtml || !this.pagesEl) return;
+        const totalPages = Math.max(1, this.ui.totalPageCount);
+        const ratio = totalPages > 1 ? this.ui.currentPageIndex / (totalPages - 1) : 0;
+        this.renderPages(this.lastFlowHtml, { preserveRatio: ratio });
+        this.applyTheme();
+        this.buildToc();
+        this.wireFootnotes();
+        this.recomputePages();
+        this.saveScrollIndex(this.ui.currentPageIndex);
+      },
       applyTypography(){
         const root = document.documentElement;
         const rs = root.style;

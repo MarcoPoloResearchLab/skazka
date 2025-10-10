@@ -338,8 +338,8 @@
 
     <!-- Reading Area -->
     <div class="area">
-      <button class="btn btn-light page-nav-btn page-prev" x-on:click="prevPage()" :title="$store?.strings?.prevButtonTitle || 'Previous page'"><i class="bi bi-chevron-left"></i></button>
-      <button class="btn btn-light page-nav-btn page-next" x-on:click="nextPage()" :title="$store?.strings?.nextButtonTitle || 'Next page'"><i class="bi bi-chevron-right"></i></button>
+      <button class="btn btn-light page-nav-btn page-prev" x-on:click="prevPage()" :title="$store?.strings?.prevButtonTitle || 'Previous page'" :disabled="isPrevDisabled()"><i class="bi bi-chevron-left"></i></button>
+      <button class="btn btn-light page-nav-btn page-next" x-on:click="nextPage()" :title="$store?.strings?.nextButtonTitle || 'Next page'" :disabled="isNextDisabled()"><i class="bi bi-chevron-right"></i></button>
 
       <!-- New pages container (no x-html) -->
       <div id="readerPages" class="pages" x-ref="readerPages"></div>

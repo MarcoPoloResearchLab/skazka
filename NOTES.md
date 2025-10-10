@@ -38,8 +38,8 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## Improvements
 
-- [ ] [SZ-20] Add integration tests to verify that dropdowns (encoding, provider etc) are populated on web app load
-- [ ] [SZ-21] Add integration tests to verify that all dependent elements are populated when a file is loaded
+- [X] [SZ-20] Add integration tests to verify that dropdowns (encoding, provider etc) are populated on web app load
+- [X] [SZ-21] Add integration tests to verify that all dependent elements are populated when a file is loaded
     - TOC
     - Reading Progress Thermomemeter
     - Page Count (ensure that total page count and current are valid, e.g. current is on 1 and total is what we expect)

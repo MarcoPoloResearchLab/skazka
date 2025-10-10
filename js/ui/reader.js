@@ -375,6 +375,15 @@ export function createReader(){
       progressPageSummary(){
         return formatProgressSummary(this.ui.currentPageIndex, this.ui.totalPageCount);
       },
+      isPrevDisabled(){
+        return this.ui.currentPageIndex <= 0;
+      },
+      isNextDisabled(){
+        if (this.ui.totalPageCount <= 1) {
+          return true;
+        }
+        return this.ui.currentPageIndex >= this.ui.totalPageCount - 1;
+      },
       triggerPageTurnEffect(index){
         if (!this.pagesEl) return;
         const target = this.pagesEl.children[index];

@@ -526,7 +526,7 @@ function bookReader(){
           if (fits()){
             continue; // good; consume next node
           }
-  
+
           // overflow -> undo append
           page.removeChild(node);
   
@@ -546,18 +546,18 @@ function bookReader(){
             // new page
             page = this.createPage();
             this.pagesEl.appendChild(page);
-  
-            // Put remainder (if any) at the front of the queue
-            if (parts.remainder) stage.insertBefore(parts.remainder, stage.firstChild);
+
+            if (parts.remainder){
+              stage.insertBefore(parts.remainder, stage.firstChild);
+            }
           } else {
             // non-splittable -> start a new page and place it there
             page = this.createPage();
             this.pagesEl.appendChild(page);
             page.appendChild(node);
-            // if STILL doesn't fit (e.g., huge image), we just allow slight overflow
           }
         }
-  
+
         document.body.removeChild(stage);
   
         this.recomputePages();
@@ -577,60 +577,175 @@ function bookReader(){
       isSplittableBlock(node){
         if (!(node instanceof HTMLElement)) return false;
         const tag = (node.tagName || '').toUpperCase();
-        return tag === 'P' || tag === 'BLOCKQUOTE' || tag === 'PRE';
+        if (tag !== 'P' && tag !== 'BLOCKQUOTE' && tag !== 'PRE') return false;
+        return (node.textContent || '').trim().length > 0;
       },
-  
+
       // Return {first, remainder} nodes that fit current page exactly.
       splitBlockForPage(node, page){
-        const text = node.textContent || '';
-        if (!text.trim()){ return { first: node, remainder: null }; }
-  
-        const first = node.cloneNode(false);
-        const rem   = node.cloneNode(false);
-  
-        // try word-based split first
-        const tokens = text.split(/(\s+)/); // keep spaces
-        let lo = 1, hi = tokens.length, best = 0;
-  
-        const test = (count) => {
-          first.textContent = tokens.slice(0, count).join('');
-          page.appendChild(first);
+        const totalLength = (node.textContent || '').length;
+        if (totalLength === 0){
+          return { first: null, remainder: null };
+        }
+
+        let lo = 1;
+        let hi = totalLength;
+        let best = 0;
+
+        const fitsWithOffset = (offset) => {
+          const parts = this.splitNodeAtOffset(node, offset);
+          if (!parts.head){
+            return false;
+          }
+          page.appendChild(parts.head);
           const ok = page.scrollHeight <= page.clientHeight;
-          page.removeChild(first);
+          page.removeChild(parts.head);
           return ok;
         };
-  
+
         while (lo <= hi){
           const mid = Math.floor((lo + hi) / 2);
-          if (test(mid)){ best = mid; lo = mid + 1; } else { hi = mid - 1; }
+          if (fitsWithOffset(mid)){
+            best = mid;
+            lo = mid + 1;
+          } else {
+            hi = mid - 1;
+          }
         }
-  
+
         if (best === 0){
-          // fall back to char-based split to guarantee progress
-          let loC = 1, hiC = Math.min(text.length, 1200), bestC = 0;
-          const testC = (c) => {
-            first.textContent = text.slice(0, c);
-            page.appendChild(first);
-            const ok = page.scrollHeight <= page.clientHeight;
-            page.removeChild(first);
-            return ok;
-          };
-          while (loC <= hiC){
-            const midC = Math.floor((loC + hiC) / 2);
-            if (testC(midC)){ bestC = midC; loC = midC + 1; } else { hiC = midC - 1; }
-          }
-          if (bestC === 0){
-            // give up: put whole node on next page
-            return { first: null, remainder: node };
-          }
-          first.textContent = text.slice(0, bestC);
-          rem.textContent   = text.slice(bestC);
-          return { first, remainder: rem.textContent.trim() ? rem : null };
+          return { first: null, remainder: node };
         }
-  
-        first.textContent = tokens.slice(0, best).join('');
-        rem.textContent   = tokens.slice(best).join('');
-        return { first, remainder: rem.textContent.trim() ? rem : null };
+
+        let parts = this.splitNodeAtOffset(node, best);
+
+        // Avoid pages that start with stray footnote markers or whitespace
+        if (parts.tail && this.startsWithFootnote(parts.tail)){
+          const tailTextLength = parts.tail.textContent.length;
+          const adjustment = Math.min(tailTextLength, totalLength - best);
+          if (adjustment > 0 && fitsWithOffset(best + adjustment)){
+            best += adjustment;
+            parts = this.splitNodeAtOffset(node, best);
+          }
+        }
+
+        const first = parts.head;
+        let remainder = parts.tail;
+        remainder = this.trimLeadingWhitespaceNode(remainder);
+
+        return { first, remainder };
+      },
+
+      splitNodeAtOffset(node, offset){
+        const total = (node.textContent || '').length;
+        if (offset <= 0){
+          return { head: null, tail: node.cloneNode(true) };
+        }
+        if (offset >= total){
+          return { head: node.cloneNode(true), tail: null };
+        }
+
+        if (node.nodeType === Node.TEXT_NODE){
+          const text = node.textContent || '';
+          const headText = text.slice(0, offset);
+          const tailText = text.slice(offset);
+          return {
+            head: headText ? document.createTextNode(headText) : null,
+            tail: tailText ? document.createTextNode(tailText) : null
+          };
+        }
+
+        if (node.nodeType === Node.ELEMENT_NODE){
+          const tagName = node.tagName || '';
+          if (tagName.toUpperCase() === 'SUP'){
+            if (offset >= total){
+              return { head: node.cloneNode(true), tail: null };
+            }
+            if (offset <= 0){
+              return { head: null, tail: node.cloneNode(true) };
+            }
+            // Prefer keeping SUP on the leading side when splitting inside it.
+            return { head: node.cloneNode(true), tail: null };
+          }
+
+          const headNode = node.cloneNode(false);
+          const tailNode = node.cloneNode(false);
+          let consumed = 0;
+          const children = Array.from(node.childNodes);
+
+          for (const child of children){
+            const childLength = (child.textContent || '').length;
+            if (consumed + childLength <= offset){
+              headNode.appendChild(child.cloneNode(true));
+              consumed += childLength;
+              continue;
+            }
+            if (consumed >= offset){
+              tailNode.appendChild(child.cloneNode(true));
+              consumed += childLength;
+              continue;
+            }
+
+            const childOffset = offset - consumed;
+            const split = this.splitNodeAtOffset(child, childOffset);
+            if (split.head){
+              headNode.appendChild(split.head);
+            }
+            if (split.tail){
+              tailNode.appendChild(split.tail);
+            }
+            consumed += childLength;
+          }
+
+          return {
+            head: headNode.childNodes.length ? headNode : null,
+            tail: tailNode.childNodes.length ? tailNode : null
+          };
+        }
+
+        return { head: null, tail: null };
+      },
+
+      startsWithFootnote(node){
+        if (!node) return false;
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'SUP'){
+          return true;
+        }
+        let current = node;
+        while (current){
+          if (current.nodeType === Node.ELEMENT_NODE && current.tagName === 'SUP'){
+            return true;
+          }
+          if (current.firstChild){
+            current = current.firstChild;
+            continue;
+          }
+          break;
+        }
+        return false;
+      },
+
+      trimLeadingWhitespaceNode(node){
+        if (!node) return null;
+        if (node.nodeType === Node.TEXT_NODE){
+          node.textContent = node.textContent.replace(/^\s+/, '');
+          return node.textContent.length ? node : null;
+        }
+        if (node.nodeType === Node.ELEMENT_NODE){
+          while (node.firstChild){
+            const trimmed = this.trimLeadingWhitespaceNode(node.firstChild);
+            if (!trimmed){
+              node.removeChild(node.firstChild);
+              continue;
+            }
+            if (trimmed !== node.firstChild){
+              node.replaceChild(trimmed, node.firstChild);
+            }
+            break;
+          }
+          return node.childNodes.length ? node : null;
+        }
+        return node;
       },
   
       createPage(){

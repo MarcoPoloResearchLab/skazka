@@ -93,6 +93,13 @@ const testCases = [
     flowHtml: Array.from({ length: 1200 }, (_, index) => `token${index + 1}`).join('  '),
     expectedLastToken: 'token1200',
   },
+  {
+    name: 'FootnoteReferencesStayInline',
+    harnessHtml: buildHarnessHtml({ pageWidth: 1024, pageHeight: 'calc(100vh - 160px)' }),
+    flowHtml: `<p>${Array.from({ length: 600 }, (_, index) => `word${index + 1}`).join(' ')} <sup class="footnote-ref" data-footnote-id="fn1">[1]</sup> ${Array.from({ length: 400 }, (_, index) => `tail${index + 1}`).join(' ')}</p>`,
+    expectedLastToken: 'tail400',
+    expectedLeadingFootnotes: 0,
+  },
 ];
 
 module.exports = async function runPaginationTests() {
@@ -111,17 +118,33 @@ module.exports = async function runPaginationTests() {
         reader.applyTypography();
         reader.renderPages(flowHtml);
 
-      const pages = Array.from(reader.pagesEl.children);
-      const overflowDiffs = pages.map((node) => node.scrollHeight - node.clientHeight);
-      const overflowCount = overflowDiffs.filter((diff) => diff > 0.5).length;
-      const combinedText = pages.map((node) => (node.textContent || '').trim()).join(' ').trim();
-      const tokens = combinedText ? combinedText.split(/\s+/) : [];
-      const trailingToken = tokens.length ? tokens[tokens.length - 1] : '';
+        const pages = Array.from(reader.pagesEl.children);
+        const overflowDiffs = pages.map((node) => node.scrollHeight - node.clientHeight);
+        const overflowCount = overflowDiffs.filter((diff) => diff > 0.5).length;
+        const combinedText = pages.map((node) => (node.textContent || '').trim()).join(' ').trim();
+        const tokens = combinedText ? combinedText.split(/\s+/) : [];
+        const trailingToken = tokens.length ? tokens[tokens.length - 1] : '';
+        const leadingFootnotes = pages.filter((node) => {
+          const firstElement = node.firstElementChild || node.firstChild;
+          if (!firstElement) return false;
+          if (firstElement.nodeType === Node.ELEMENT_NODE && firstElement.tagName === 'SUP') {
+            return true;
+          }
+          if (firstElement.nodeType === Node.TEXT_NODE) {
+            return firstElement.textContent.trim().startsWith('[');
+          }
+          if (firstElement.nodeType === Node.ELEMENT_NODE && firstElement.tagName === 'P') {
+            const text = firstElement.textContent.trim();
+            return text.startsWith('[');
+          }
+          return false;
+        }).length;
 
         return {
           overflowCount,
           maxOverflow: overflowDiffs.reduce((max, diff) => Math.max(max, diff), 0),
           trailingToken,
+          leadingFootnotes,
         };
       }, testCase.flowHtml);
 
@@ -136,6 +159,14 @@ module.exports = async function runPaginationTests() {
         testCase.expectedLastToken,
         `${testCase.name}: expected trailing token "${testCase.expectedLastToken}" but found "${metrics.trailingToken}"`,
       );
+
+      if (typeof testCase.expectedLeadingFootnotes === 'number') {
+        assertEqual(
+          metrics.leadingFootnotes,
+          testCase.expectedLeadingFootnotes,
+          `${testCase.name}: expected ${testCase.expectedLeadingFootnotes} pages to start with footnote markers, found ${metrics.leadingFootnotes}`,
+        );
+      }
 
       await page.close();
     }

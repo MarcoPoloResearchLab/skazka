@@ -734,6 +734,10 @@ function bookReader(){
       applyTheme(){
         this.themeClass = this.ui.theme==='dark' ? 'theme-dark' :
                           this.ui.theme==='sepia' ? 'theme-sepia' : 'theme-light';
+        const html = document.documentElement;
+        if (html) {
+          html.setAttribute('data-bs-theme', this.ui.theme === 'dark' ? 'dark' : 'light');
+        }
       },
   
       /* ---------- Paging ---------- */

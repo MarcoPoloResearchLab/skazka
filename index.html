@@ -110,6 +110,70 @@
     .page-prev { left:.5rem; } .page-next { right:.5rem; }
     @media (max-width:576px){ .page-nav-btn{ display:none; } }
 
+    .toolbar .form-select,
+    .toolbar .form-control,
+    .toolbar .input-group-text {
+      background-color: var(--page-bg);
+      color: var(--page-fg);
+      border-color: rgba(0, 0, 0, 0.12);
+    }
+    .toolbar .form-select:focus,
+    .toolbar .form-control:focus {
+      background-color: var(--page-bg);
+      color: var(--page-fg);
+      border-color: rgba(17, 113, 239, 0.55);
+      box-shadow: 0 0 0 0.2rem rgba(17, 113, 239, 0.18);
+    }
+    .toolbar .input-group-text {
+      border-right-width: 0;
+    }
+    .toolbar .btn-outline-primary {
+      color: var(--page-fg);
+      border-color: rgba(17, 113, 239, 0.6);
+    }
+    .toolbar .btn-outline-primary:hover,
+    .toolbar .btn-outline-primary:focus {
+      background-color: rgba(17, 113, 239, 0.12);
+      color: var(--page-fg);
+    }
+    .theme-sepia .toolbar .form-select,
+    .theme-sepia .toolbar .form-control,
+    .theme-sepia .toolbar .input-group-text {
+      border-color: rgba(58, 46, 34, 0.24);
+    }
+    .theme-sepia .toolbar .form-select:focus,
+    .theme-sepia .toolbar .form-control:focus {
+      border-color: rgba(154, 116, 79, 0.6);
+      box-shadow: 0 0 0 0.2rem rgba(154, 116, 79, 0.2);
+    }
+    .theme-sepia .toolbar .btn-outline-primary {
+      border-color: rgba(154, 116, 79, 0.6);
+      color: rgba(154, 116, 79, 0.9);
+    }
+    .theme-sepia .toolbar .btn-outline-primary:hover,
+    .theme-sepia .toolbar .btn-outline-primary:focus {
+      background-color: rgba(154, 116, 79, 0.12);
+    }
+    .theme-dark .toolbar .form-select,
+    .theme-dark .toolbar .form-control,
+    .theme-dark .toolbar .input-group-text {
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+    .theme-dark .toolbar .form-select:focus,
+    .theme-dark .toolbar .form-control:focus {
+      border-color: rgba(102, 179, 255, 0.6);
+      box-shadow: 0 0 0 0.2rem rgba(102, 179, 255, 0.25);
+    }
+    .theme-dark .toolbar .btn-outline-primary {
+      border-color: rgba(102, 179, 255, 0.6);
+      color: rgba(147, 198, 255, 0.95);
+    }
+    .theme-dark .toolbar .btn-outline-primary:hover,
+    .theme-dark .toolbar .btn-outline-primary:focus {
+      background-color: rgba(102, 179, 255, 0.18);
+      color: rgba(147, 198, 255, 0.98);
+    }
+
     .toc-offcanvas .offcanvas-body a { text-decoration:none; }
     .toc-offcanvas .list-group-item {
       background-color: var(--page-bg);

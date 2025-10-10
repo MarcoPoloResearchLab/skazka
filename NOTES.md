@@ -31,7 +31,6 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## BugFixes
 
-- [ ] [SZ-10] The dropdowns in the top panel such as provider, encoding, URL, browse and even theme selector itself do not follow the theme switch and stay in the light theme
 - [ ] [SZ-11] Subtitles, such as author, such as "by Сергей Тимофеевич Аксаков", and page information, such as Page 22 / 41, on top of the web page do not follow the theme switch and stay in the light theme  
 
 ## Maintenance

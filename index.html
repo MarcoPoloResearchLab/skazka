@@ -111,6 +111,31 @@
     @media (max-width:576px){ .page-nav-btn{ display:none; } }
 
     .toc-offcanvas .offcanvas-body a { text-decoration:none; }
+    .toc-offcanvas .list-group-item {
+      background-color: var(--page-bg);
+      color: var(--page-fg);
+      border-color: rgba(0, 0, 0, 0.08);
+    }
+    .toc-offcanvas .list-group-item:hover,
+    .toc-offcanvas .list-group-item:focus {
+      background-color: rgba(0, 0, 0, 0.03);
+      color: var(--page-fg);
+    }
+    .theme-sepia .toc-offcanvas .list-group-item {
+      border-color: rgba(58, 46, 34, 0.18);
+    }
+    .theme-sepia .toc-offcanvas .list-group-item:hover,
+    .theme-sepia .toc-offcanvas .list-group-item:focus {
+      background-color: rgba(58, 46, 34, 0.08);
+    }
+    .theme-dark .toc-offcanvas .list-group-item {
+      border-color: rgba(255, 255, 255, 0.12);
+    }
+    .theme-dark .toc-offcanvas .list-group-item:hover,
+    .theme-dark .toc-offcanvas .list-group-item:focus {
+      background-color: rgba(255, 255, 255, 0.12);
+      color: var(--page-fg);
+    }
     .popover { color:#111; }
     .theme-light .offcanvas,
     .theme-sepia .offcanvas,

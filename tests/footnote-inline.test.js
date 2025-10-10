@@ -97,9 +97,9 @@ module.exports = async function runFootnoteInlineTests() {
     );
 
     assertEqual(
-      result.merged.includes('</sup> и '),
+      /<span class="footnote-inline"[^>]*><sup class="footnote-ref"[^>]*>\[\d+]<\/sup>.*?<span class="footnote-inline__spacer" aria-hidden="true">&nbsp;<\/span>/.test(result.merged),
       true,
-      'Footnote paragraphs produced from raw text must keep the sentence inline after footnote markers',
+      'Footnote paragraphs produced from raw text must render inline footnote components with spacer glue',
     );
     assertEqual(
       result.offenders.length,

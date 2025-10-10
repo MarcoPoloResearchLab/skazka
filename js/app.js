@@ -1178,14 +1178,22 @@ function bookReader(){
       },
       escapeHtmlExceptInjected(s){
         let masked = s.replace(/<hr\/>/g,'[[[HR]]]')
+                      .replace(/<span class="footnote-inline"[^>]*>[\s\S]*?<\/span>/g, m=>'[[[FN:'+btoa(m)+']]]')
                       .replace(/<sup class="footnote-ref" data-footnote-id="fn\d+">\[\d+\]<\/sup>/g, m=>'[[[SUP:'+btoa(m)+']]]');
         masked = this.escapeHtml(masked);
         masked = masked.replace(/\[\[\[HR]]]/g,'<hr/>')
+                       .replace(/\[\[\[FN:([A-Za-z0-9+/=]+)]]]/g, (_,b64)=>atob(b64))
                        .replace(/\[\[\[SUP:([A-Za-z0-9+/=]+)]]]/g, (_,b64)=>atob(b64));
         return masked;
       },
       injectFootnoteReferences(text){
-        const toSup = (num) => `<sup class="footnote-ref" data-footnote-id="fn${num}">[${num}]</sup>`;
+        const renderInline = (number, trailing) => {
+          const footnoteId = `fn${number}`;
+          const escapedTrailing = trailing || '';
+          const trailingAttr = escapedTrailing.replace(/"/g, '&quot;');
+          const punctMarkup = escapedTrailing ? `<span class="footnote-inline__punct" aria-hidden="true">${escapedTrailing}</span>` : '';
+          return `<span class="footnote-inline" x-data="footnoteInline('${footnoteId}', '${trailingAttr}')" data-footnote-id="${footnoteId}"><sup class="footnote-ref" data-footnote-id="${footnoteId}">[${number}]</sup>${punctMarkup}<span class="footnote-inline__spacer" aria-hidden="true">&nbsp;</span></span>`;
+        };
         const shouldConvert = (str, offset)=>{
           for(let i = offset - 1; i >= 0; i--){
             const ch = str[i];
@@ -1194,19 +1202,30 @@ function bookReader(){
           }
           return false;
         };
+        const convertStandaloneNumber = (full, num, offset, str)=>{
+          if (!shouldConvert(str, offset)) return full;
+          return renderInline(num, '');
+        };
         let out = String(text || '');
-        out = out.replace(/\[(\d{1,3})]/g, (_, num)=>toSup(num));
-        out = out.replace(/\((\d{1,3})\)/g, (full, num, offset, str)=>{
-          return shouldConvert(str, offset) ? toSup(num) : full;
+        out = out.replace(/\[(\d{1,3})\](\s*)([.,;:!?]+)?(\s*)/g, (full, num, wsBeforePunct, punct = '', wsAfter)=>{
+          return renderInline(num, punct);
         });
-        out = out.replace(/\b(\d{1,3})\)(?!\w)/g, (full, num, offset, str)=>{
-          return shouldConvert(str, offset) ? toSup(num) : full;
-        });
-        out = out.replace(/\b(\d{1,3})\.(?!\d)/g, (full, num, offset, str)=>{
-          return shouldConvert(str, offset) ? toSup(num) : full;
-        });
+        out = out.replace(/\((\d{1,3})\)/g, convertStandaloneNumber);
+        out = out.replace(/\b(\d{1,3})\)(?!\w)/g, convertStandaloneNumber);
+        out = out.replace(/\b(\d{1,3})\.(?!\d)/g, convertStandaloneNumber);
         return out;
       }
     };
   }
+
+if (typeof window !== 'undefined') {
+  window.footnoteInline = (footnoteId, trailing) => ({
+    footnoteId,
+    trailing,
+    init(){
+      const spacer = this.$el.querySelector('.footnote-inline__spacer');
+      if (spacer) spacer.textContent = '\u00A0';
+    }
+  });
+}
   

@@ -784,6 +784,51 @@ function bookReader(){
               pageEl.appendChild(wrapper);
             }
           });
+
+          const prevPage = pageEl.previousElementSibling;
+          if (!prevPage) return;
+
+          const leadingSupParagraphs = Array.from(pageEl.querySelectorAll('p')).filter((paragraph)=>{
+            const firstChild = paragraph.firstChild;
+            return firstChild && firstChild.nodeType === Node.ELEMENT_NODE && firstChild.classList.contains('footnote-ref');
+          });
+
+          if (!leadingSupParagraphs.length) return;
+
+          const findLastParagraph = (el) => {
+            const paragraphs = el.querySelectorAll('p');
+            return paragraphs.length ? paragraphs[paragraphs.length - 1] : null;
+          };
+
+          leadingSupParagraphs.forEach((paragraph)=>{
+            let targetParagraph = findLastParagraph(prevPage);
+            const supNode = paragraph.firstChild;
+            if (!supNode || supNode.nodeType !== Node.ELEMENT_NODE || !supNode.classList.contains('footnote-ref')){
+              return;
+            }
+
+            paragraph.removeChild(supNode);
+
+            if (!targetParagraph){
+              targetParagraph = document.createElement('p');
+              prevPage.appendChild(targetParagraph);
+            }
+
+            const lastChild = targetParagraph.lastChild;
+            if (lastChild && lastChild.nodeType === Node.TEXT_NODE){
+              if (!/\s$/.test(lastChild.textContent || '')){
+                lastChild.textContent += ' ';
+              }
+            } else if (targetParagraph.childNodes.length > 0){
+              targetParagraph.appendChild(document.createTextNode(' '));
+            }
+
+            targetParagraph.appendChild(supNode);
+            this.trimLeadingWhitespaceNode(paragraph);
+            if (!paragraph.textContent.trim()){
+              paragraph.remove();
+            }
+          });
         });
       },
       findPreviousWordBoundary(node, offset){

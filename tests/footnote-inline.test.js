@@ -18,7 +18,7 @@ module.exports = async function runFootnoteInlineTests() {
     await page.setViewport({ width: 1280, height: 1200 });
     await page.setContent(buildReaderHarnessHtml(), { waitUntil: 'domcontentloaded' });
 
-    const danglingSup = await page.evaluate((snippet) => {
+    const stats = await page.evaluate((snippet) => {
       const reader = bookReader();
       reader.pagesEl = document.getElementById('readerPages');
       reader.applyTypography();
@@ -31,26 +31,35 @@ module.exports = async function runFootnoteInlineTests() {
         reader.renderPages(flowHtml);
 
         const pages = Array.from(reader.pagesEl.children);
-        const dangling = pages.reduce((sum, pageEl) => {
+        const { dangling, leading } = pages.reduce((sum, pageEl) => {
           const refs = Array.from(pageEl.querySelectorAll('sup.footnote-ref'));
           const invalid = refs.filter((ref) => {
             const parent = ref.parentElement;
             if (!parent) return true;
             return parent.tagName !== 'P' && parent.tagName !== 'EM' && parent.tagName !== 'SPAN';
           });
-          return sum + invalid.length;
-        }, 0);
+          const leadingRefs = Array.from(pageEl.querySelectorAll('p')).filter((paragraph) => {
+            const firstChild = paragraph.firstChild;
+            return firstChild && firstChild.nodeType === Node.ELEMENT_NODE && firstChild.classList.contains('footnote-ref');
+          }).length;
 
-        if (dangling > 0) {
+          return {
+            dangling: sum.dangling + invalid.length,
+            leading: sum.leading + leadingRefs,
+          };
+        }, { dangling: 0, leading: 0 });
+
+        if (dangling.dangling > 0 || dangling.leading > 0) {
           return dangling;
         }
       }
 
-      return 0;
+      return { dangling: 0, leading: 0 };
     }, SNIPPET_HTML);
 
+    assertEqual(stats.leading, 0, 'Footnote references must not begin a paragraph after pagination');
     assertEqual(
-      danglingSup,
+      stats.dangling,
       0,
       'Footnote references must remain inline within paragraph content across pagination',
     );

@@ -509,8 +509,19 @@ function bookReader(){
   
         // consume stage.firstChild repeatedly to avoid index bugs
         while (stage.firstChild){
-          const node = stage.firstChild;
-  
+          let node = stage.firstChild;
+          stage.removeChild(node);
+
+          if (node.nodeType === Node.TEXT_NODE){
+            const text = node.textContent || '';
+            if (!text.trim()){
+              continue;
+            }
+            const wrapper = document.createElement('p');
+            wrapper.textContent = text;
+            node = wrapper;
+          }
+
           page.appendChild(node);
           if (fits()){
             continue; // good; consume next node

@@ -87,6 +87,12 @@ const testCases = [
     flowHtml: `<p>${Array.from({ length: 2000 }, (_, index) => `word${index + 1}`).join(' ')}</p>`,
     expectedLastToken: 'word2000',
   },
+  {
+    name: 'RawTextNodes_ShouldPaginateCleanly',
+    harnessHtml: buildHarnessHtml({ pageWidth: 1024, pageHeight: 'calc(100vh - 160px)' }),
+    flowHtml: Array.from({ length: 1200 }, (_, index) => `token${index + 1}`).join('  '),
+    expectedLastToken: 'token1200',
+  },
 ];
 
 module.exports = async function runPaginationTests() {

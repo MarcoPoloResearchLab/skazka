@@ -767,12 +767,29 @@ function bookReader(){
         const pages = Array.from(this.pagesEl.children);
         pages.forEach((pageEl)=>{
           const directSup = Array.from(pageEl.querySelectorAll(':scope > sup.footnote-ref'));
+          const ensureTrailingSpace = (el) => {
+            const lastChild = el.lastChild;
+            if (lastChild && lastChild.nodeType === Node.TEXT_NODE){
+              if (!/\s$/.test(lastChild.textContent || '')){
+                lastChild.textContent += ' ';
+              }
+            } else if (el.childNodes.length){
+              el.appendChild(document.createTextNode(' '));
+            }
+          };
+
+          const appendWithSpacing = (el, node) => {
+            if (!node) return;
+            ensureTrailingSpace(el);
+            el.appendChild(node);
+          };
+
           directSup.forEach((sup)=>{
             const prevParagraph = sup.previousElementSibling && sup.previousElementSibling.tagName === 'P'
               ? sup.previousElementSibling
               : null;
             if (prevParagraph){
-              prevParagraph.appendChild(sup);
+              appendWithSpacing(prevParagraph, sup);
               return;
             }
 
@@ -786,57 +803,124 @@ function bookReader(){
 
             const wrapper = document.createElement('p');
             wrapper.appendChild(sup);
-            if (nextParagraph){
-              pageEl.insertBefore(wrapper, nextParagraph);
-            } else {
-              pageEl.appendChild(wrapper);
-            }
+            pageEl.insertBefore(wrapper, pageEl.firstChild || null);
           });
 
-          const prevPage = pageEl.previousElementSibling;
-          if (!prevPage) return;
+          const findTargetParagraph = (paragraph) => {
+            const sibling = paragraph.previousElementSibling;
+            if (sibling && sibling.tagName === 'P') return sibling;
+            const prevPage = pageEl.previousElementSibling;
+            if (!prevPage) return null;
+            const paragraphs = prevPage.querySelectorAll('p');
+            if (paragraphs.length) return paragraphs[paragraphs.length - 1];
+            const wrapper = document.createElement('p');
+            prevPage.appendChild(wrapper);
+            return wrapper;
+          };
 
           const leadingSupParagraphs = Array.from(pageEl.querySelectorAll('p')).filter((paragraph)=>{
             const firstChild = paragraph.firstChild;
             return firstChild && firstChild.nodeType === Node.ELEMENT_NODE && firstChild.classList.contains('footnote-ref');
           });
 
-          if (!leadingSupParagraphs.length) return;
-
-          const findLastParagraph = (el) => {
-            const paragraphs = el.querySelectorAll('p');
-            return paragraphs.length ? paragraphs[paragraphs.length - 1] : null;
-          };
-
           leadingSupParagraphs.forEach((paragraph)=>{
-            let targetParagraph = findLastParagraph(prevPage);
-            const supNode = paragraph.firstChild;
-            if (!supNode || supNode.nodeType !== Node.ELEMENT_NODE || !supNode.classList.contains('footnote-ref')){
-              return;
+            let targetParagraph = findTargetParagraph(paragraph);
+            if (!targetParagraph) return;
+
+            while (paragraph.firstChild && paragraph.firstChild.nodeType === Node.ELEMENT_NODE && paragraph.firstChild.classList.contains('footnote-ref')){
+              const supNode = paragraph.firstChild;
+              paragraph.removeChild(supNode);
+              appendWithSpacing(targetParagraph, supNode);
             }
 
-            paragraph.removeChild(supNode);
-
-            if (!targetParagraph){
-              targetParagraph = document.createElement('p');
-              prevPage.appendChild(targetParagraph);
-            }
-
-            const lastChild = targetParagraph.lastChild;
-            if (lastChild && lastChild.nodeType === Node.TEXT_NODE){
-              if (!/\s$/.test(lastChild.textContent || '')){
-                lastChild.textContent += ' ';
-              }
-            } else if (targetParagraph.childNodes.length > 0){
-              targetParagraph.appendChild(document.createTextNode(' '));
-            }
-
-            targetParagraph.appendChild(supNode);
             this.trimLeadingWhitespaceNode(paragraph);
-            if (!paragraph.textContent.trim()){
+            while (paragraph.firstChild){
+              const child = paragraph.firstChild;
+              paragraph.removeChild(child);
+              if (child.nodeType === Node.TEXT_NODE){
+                const text = child.textContent || '';
+                if (!text.trim()){
+                  continue;
+                }
+                const normalized = text.replace(/^\s+/, '');
+                if (!normalized){
+                  continue;
+                }
+                appendWithSpacing(targetParagraph, document.createTextNode(normalized));
+              } else {
+                appendWithSpacing(targetParagraph, child);
+              }
+            }
+
+            if (!paragraph.textContent.trim() && !paragraph.querySelector('*')){
               paragraph.remove();
             }
           });
+
+          const endsWithFootnote = (el) => {
+            if (!el) return false;
+            return /(<\/sup>|\[[0-9]+])\s*$/.test((el.innerHTML || '').trim());
+          };
+
+          const startsWithContinuation = (paragraph) => {
+            if (!paragraph) return false;
+            const text = (paragraph.textContent || '').trim();
+            if (!text) return false;
+            const stripped = text.replace(/^["'«»„“”‚‛(\[]+/, '');
+            if (!stripped) return false;
+            const firstChar = stripped.charAt(0);
+            if (!firstChar) return false;
+            return /\p{L}/u.test(firstChar) && firstChar === firstChar.toLowerCase() && firstChar !== firstChar.toUpperCase();
+          };
+
+          const mergeParagraphs = (source, target) => {
+            if (!source || !target || source === target) return;
+            this.trimLeadingWhitespaceNode(source);
+            while (source.firstChild){
+              const child = source.firstChild;
+              source.removeChild(child);
+              if (child.nodeType === Node.TEXT_NODE){
+                const text = child.textContent || '';
+                if (!text.trim()) continue;
+                const normalized = text.replace(/^\s+/, '');
+                if (!normalized) continue;
+                appendWithSpacing(target, document.createTextNode(normalized));
+              } else {
+                appendWithSpacing(target, child);
+              }
+            }
+            if (!source.textContent.trim() && !source.querySelector('*')){
+              source.remove();
+            }
+          };
+
+          const mergeContinuationsIn = (root) => {
+            let changed = false;
+            const paragraphs = Array.from(root.querySelectorAll('p'));
+            for (let i = 1; i < paragraphs.length; i++){
+              const prevParagraph = paragraphs[i - 1];
+              const currentParagraph = paragraphs[i];
+              if (endsWithFootnote(prevParagraph) && startsWithContinuation(currentParagraph)){
+                mergeParagraphs(currentParagraph, prevParagraph);
+                changed = true;
+                break;
+              }
+            }
+            return changed;
+          };
+
+          while (mergeContinuationsIn(pageEl)){}
+
+          const prevPage = pageEl.previousElementSibling;
+          if (prevPage){
+            const prevParagraphs = prevPage.querySelectorAll('p');
+            const lastPrev = prevParagraphs.length ? prevParagraphs[prevParagraphs.length - 1] : null;
+            let firstCurrent = pageEl.querySelector('p');
+            while (lastPrev && firstCurrent && endsWithFootnote(lastPrev) && startsWithContinuation(firstCurrent)){
+              mergeParagraphs(firstCurrent, lastPrev);
+              firstCurrent = pageEl.querySelector('p');
+            }
+          }
         });
       },
       findPreviousWordBoundary(node, offset){

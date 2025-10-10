@@ -97,9 +97,9 @@ module.exports = async function runFootnoteInlineTests() {
     );
 
     assertEqual(
-      /<span class="footnote-inline"[^>]*><sup class="footnote-ref"[^>]*>\[\d+]<\/sup>.*?<span class="footnote-inline__spacer" aria-hidden="true">&nbsp;<\/span>/.test(result.merged),
+      /<span class="footnote-inline"[^>]*><sup class="footnote-ref"[^>]*>\[\d+]<\/sup>[^<]*&nbsp;<\/span>/.test(result.merged),
       true,
-      'Footnote paragraphs produced from raw text must render inline footnote components with spacer glue',
+      'Footnote paragraphs produced from raw text must render inline footnote components with a non-breaking space',
     );
     assertEqual(
       result.offenders.length,

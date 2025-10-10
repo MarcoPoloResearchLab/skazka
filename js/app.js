@@ -451,7 +451,15 @@ function bookReader(){
         for(let block of parts){
           const trimmed = block.trim();
           if(!trimmed) continue;
-          if(trimmed === '<hr/>' || trimmed === '<hr />'){ normalizedBlocks.push('<hr/>'); continue; }
+          if(trimmed.startsWith('<hr/>') || trimmed.startsWith('<hr />')){
+            normalizedBlocks.push('<hr/>');
+            const remainder = trimmed.replace(/^<hr\/?>([\s\S]*)$/i, '$1').trim();
+            if (remainder){
+              const safeRemainder = this.escapeHtmlExceptInjected(remainder).replace(/\n+/g, ' ');
+              normalizedBlocks.push(safeRemainder);
+            }
+            continue;
+          }
           let safe = this.escapeHtmlExceptInjected(trimmed);
           safe = safe.replace(/\n+/g,' ');
           if (normalizedBlocks.length && this.shouldMergeParagraphBlocks(normalizedBlocks[normalizedBlocks.length - 1], safe)) {
@@ -1177,23 +1185,41 @@ function bookReader(){
         return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
       },
       escapeHtmlExceptInjected(s){
-        let masked = s.replace(/<hr\/>/g,'[[[HR]]]')
-                      .replace(/<span class="footnote-inline"[^>]*>[\s\S]*?<\/span>/g, m=>'[[[FN:'+btoa(m)+']]]')
-                      .replace(/<sup class="footnote-ref" data-footnote-id="fn\d+">\[\d+\]<\/sup>/g, m=>'[[[SUP:'+btoa(m)+']]]');
-        masked = this.escapeHtml(masked);
-        masked = masked.replace(/\[\[\[HR]]]/g,'<hr/>')
-                       .replace(/\[\[\[FN:([A-Za-z0-9+/=]+)]]]/g, (_,b64)=>atob(b64))
-                       .replace(/\[\[\[SUP:([A-Za-z0-9+/=]+)]]]/g, (_,b64)=>atob(b64));
-        return masked;
+        const escaped = this.escapeHtml(s);
+        let html = escaped.replace(/@@FN:(\d+)::(.*?)@@(\s*)/g, (_, num, punct, ws)=>{
+          let trailingPunct = punct || '';
+          let remainder = ws || '';
+          if (!trailingPunct && remainder){
+            const match = remainder.match(/^\s*([.,;:!?]+)/);
+            if (match){
+              trailingPunct = match[1];
+              remainder = remainder.slice(match[0].length);
+            }
+          }
+          if (remainder.startsWith(' ')){
+            remainder = remainder.slice(1);
+          }
+          const markup = this.renderFootnoteInlineMarkup(num, trailingPunct);
+          return markup + remainder;
+        });
+        html = html.replace(/(<span class="footnote-inline"[^>]*>[\s\S]*?<sup[^>]*>\[\d+]<\/sup>)([^<]*?)&nbsp;<\/span>(\s*)([.,;:!?]+)/g, (full, prefix, trailingText = '', ws, punct)=>{
+          const trimmedTrailing = trailingText.trimEnd();
+          const preservedSpacing = trailingText.slice(0, trailingText.length - trimmedTrailing.length);
+          const existingPunct = trimmedTrailing && /[.,;:!?]+$/.test(trimmedTrailing) ? '' : punct;
+          const finalTrailing = trimmedTrailing + existingPunct;
+          const remainderWs = ws;
+          return `${prefix}${preservedSpacing}${finalTrailing}&nbsp;</span>${remainderWs}`;
+        });
+        return html;
+      },
+      renderFootnoteInlineMarkup(number, trailing){
+        const punct = typeof trailing === 'string' ? trailing : '';
+        const footnoteId = `fn${number}`;
+        const escapedTrailing = this.escapeHtml(punct);
+        const trailingAttr = escapedTrailing.replace(/"/g, '&quot;');
+        return `<span class="footnote-inline" x-data="footnoteInline('${footnoteId}', '${trailingAttr}')" data-footnote-id="${footnoteId}"><sup class="footnote-ref" data-footnote-id="${footnoteId}">[${number}]</sup>${escapedTrailing}&nbsp;</span>`;
       },
       injectFootnoteReferences(text){
-        const renderInline = (number, trailing) => {
-          const footnoteId = `fn${number}`;
-          const escapedTrailing = trailing || '';
-          const trailingAttr = escapedTrailing.replace(/"/g, '&quot;');
-          const punctMarkup = escapedTrailing ? `<span class="footnote-inline__punct" aria-hidden="true">${escapedTrailing}</span>` : '';
-          return `<span class="footnote-inline" x-data="footnoteInline('${footnoteId}', '${trailingAttr}')" data-footnote-id="${footnoteId}"><sup class="footnote-ref" data-footnote-id="${footnoteId}">[${number}]</sup>${punctMarkup}<span class="footnote-inline__spacer" aria-hidden="true">&nbsp;</span></span>`;
-        };
         const shouldConvert = (str, offset)=>{
           for(let i = offset - 1; i >= 0; i--){
             const ch = str[i];
@@ -1204,11 +1230,11 @@ function bookReader(){
         };
         const convertStandaloneNumber = (full, num, offset, str)=>{
           if (!shouldConvert(str, offset)) return full;
-          return renderInline(num, '');
+          return `@@FN:${num}::@@`;
         };
         let out = String(text || '');
         out = out.replace(/\[(\d{1,3})\](\s*)([.,;:!?]+)?(\s*)/g, (full, num, wsBeforePunct, punct = '', wsAfter)=>{
-          return renderInline(num, punct);
+          return `@@FN:${num}::${punct || ''}@@${wsAfter}`;
         });
         out = out.replace(/\((\d{1,3})\)/g, convertStandaloneNumber);
         out = out.replace(/\b(\d{1,3})\)(?!\w)/g, convertStandaloneNumber);
@@ -1222,10 +1248,7 @@ if (typeof window !== 'undefined') {
   window.footnoteInline = (footnoteId, trailing) => ({
     footnoteId,
     trailing,
-    init(){
-      const spacer = this.$el.querySelector('.footnote-inline__spacer');
-      if (spacer) spacer.textContent = '\u00A0';
-    }
+    init(){}
   });
 }
   

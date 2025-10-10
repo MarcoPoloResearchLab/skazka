@@ -38,16 +38,20 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## Improvements
 
+- [ ] [SZ-20] Add integration tests to verify that dropdowns (encoding, provider etc) are populated on web app load
+- [ ] [SZ-21] Add integration tests to verify that all dependent elements are populated when a file is loaded
+    - TOC
+    - Reading Progress Thermomemeter
+    - Page Count (ensure that total page count and current are valid, e.g. current is on 1 and total is what we expect)
+    - Only forward button is available on the first page
+    - Clicking on forward button moves the page (Reading Progress Thermomemeter, Page Count etc)
+
 ## BugFixes
 
-- [ ] [SZ-15] Text rendering stops mid story.  the rendered version of [text](<assets/texts/В. Ф. Одоевский. Городок в табакерке. Текст произведения.txt>) ends at "молоточки быстро застучали, колокольчики" for no good reason, as the text continues.
-
-- [ ] [SZ-16] Page counting at the bottom nwext to thermometer is broken. It adds pages as the browsing goes, so going to the next page adds 1 to toal pages. Total pages shall be pre-computed, and only change if we change window size, font size etc
-
-- [ ] [SZ-17] TOC is not updated after loading another book
-
-- [ ] [SZ-19] JS Conosle errors
-
+- [X] [SZ-15] Text rendering stops mid story.  the rendered version of [text](<assets/texts/В. Ф. Одоевский. Городок в табакерке. Текст произведения.txt>) ends at "молоточки быстро застучали, колокольчики" for no good reason, as the text continues.
+- [X] [SZ-16] Page counting at the bottom nwext to thermometer is broken. It adds pages as the browsing goes, so going to the next page adds 1 to toal pages. Total pages shall be pre-computed, and only change if we change window size, font size etc
+- [X] [SZ-17] TOC is not updated after loading another book
+- [X] [SZ-19] JS Conosle errors
 This site appears to use a scroll-linked positioning effect. This may not work well with asynchronous panning; see https://firefox-source-docs.mozilla.org/performance/scroll-linked_effects.html for further details and to join the discussion on related tools and features! localhost:8000
 Uncaught DOMException: Node.insertBefore: Child to insert before is not a child of this node
     renderPages http://localhost:8000/js/app.js:553

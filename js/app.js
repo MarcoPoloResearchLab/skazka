@@ -5,7 +5,6 @@ function bookReader(){
         fontSizePx: 18,
         pagePaddingPx: 24,
         theme: 'light',
-        fitViewportHeight: true,
         currentPageIndex: 0,
         totalPageCount: 1
       },
@@ -720,9 +719,10 @@ function bookReader(){
         const readingArea = this.pagesEl ? this.pagesEl.closest('.area') : null;
         const areaHeight = readingArea ? readingArea.getBoundingClientRect().height : viewportAllowance;
   
-        const targetHeight = this.ui.fitViewportHeight
-          ? Math.max(160, Math.min(Math.floor(viewportAllowance), Math.floor(areaHeight)))
-          : Math.max(160, Math.floor(window.innerHeight * 0.8));
+        const targetHeight = Math.max(
+          160,
+          Math.min(Math.floor(viewportAllowance), Math.floor(areaHeight)),
+        );
   
         this.pageHeightPx = targetHeight;
         rs.setProperty('--page-height', `${targetHeight}px`);

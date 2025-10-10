@@ -34,7 +34,6 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## BugFixes
 
-- [ ] [SZ-05] TOC panel does not respect the theme and stayys light
 - [ ] [SZ-06] Text size slider doesn not change the font size of the text. Ensure that all the calculations follow such as pages and percentage etc
 - [ ] [SZ-07] The second slider does nothing
 - [ ] [SZ-08] The page browsing is represented with two pairs of angular brackerts -- in the top bar and on the page side. There must be only one pair of angular brackets, on the sides of the page. Remove the brackets on top

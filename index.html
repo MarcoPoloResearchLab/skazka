@@ -66,6 +66,15 @@
 
     .toc-offcanvas .offcanvas-body a { text-decoration:none; }
     .popover { color:#111; }
+    .theme-light .offcanvas,
+    .theme-sepia .offcanvas,
+    .theme-dark .offcanvas {
+      background: var(--page-bg);
+      color: var(--page-fg);
+    }
+    .theme-dark .offcanvas {
+      border-color: rgba(255, 255, 255, 0.12);
+    }
   </style>
 </head>
 <body x-data="bookReader()" x-init="init()" :class="themeClass">

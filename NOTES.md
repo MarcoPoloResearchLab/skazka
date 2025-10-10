@@ -31,5 +31,4 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## BugFixes
 
-
 ## Maintenance

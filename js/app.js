@@ -559,7 +559,8 @@ function bookReader(){
         }
 
         document.body.removeChild(stage);
-  
+
+        this.relinkDanglingFootnotes();
         this.recomputePages();
         const maxIndex = Math.max(1, this.ui.totalPageCount - 1);
         if (typeof preserveRatio === 'number' && maxIndex > 0) {
@@ -621,11 +622,17 @@ function bookReader(){
 
         // Avoid pages that start with stray footnote markers or whitespace
         if (parts.tail && this.startsWithFootnote(parts.tail)){
-          const tailTextLength = parts.tail.textContent.length;
-          const adjustment = Math.min(tailTextLength, totalLength - best);
-          if (adjustment > 0 && fitsWithOffset(best + adjustment)){
-            best += adjustment;
+          const rollbackOffset = this.findPreviousWordBoundary(node, best);
+          if (rollbackOffset >= 0 && rollbackOffset < best){
+            best = rollbackOffset;
             parts = this.splitNodeAtOffset(node, best);
+          } else {
+            const tailTextLength = parts.tail.textContent.length;
+            const adjustment = Math.min(tailTextLength, totalLength - best);
+            if (adjustment > 0 && fitsWithOffset(best + adjustment)){
+              best += adjustment;
+              parts = this.splitNodeAtOffset(node, best);
+            }
           }
         }
 
@@ -746,6 +753,52 @@ function bookReader(){
           return node.childNodes.length ? node : null;
         }
         return node;
+      },
+      relinkDanglingFootnotes(){
+        if (!this.pagesEl) return;
+        const pages = Array.from(this.pagesEl.children);
+        pages.forEach((pageEl)=>{
+          const directSup = Array.from(pageEl.querySelectorAll(':scope > sup.footnote-ref'));
+          directSup.forEach((sup)=>{
+            const prevParagraph = sup.previousElementSibling && sup.previousElementSibling.tagName === 'P'
+              ? sup.previousElementSibling
+              : null;
+            if (prevParagraph){
+              prevParagraph.appendChild(sup);
+              return;
+            }
+
+            const nextParagraph = sup.nextElementSibling && sup.nextElementSibling.tagName === 'P'
+              ? sup.nextElementSibling
+              : null;
+            if (nextParagraph){
+              nextParagraph.insertBefore(sup, nextParagraph.firstChild || null);
+              return;
+            }
+
+            const wrapper = document.createElement('p');
+            wrapper.appendChild(sup);
+            if (nextParagraph){
+              pageEl.insertBefore(wrapper, nextParagraph);
+            } else {
+              pageEl.appendChild(wrapper);
+            }
+          });
+        });
+      },
+      findPreviousWordBoundary(node, offset){
+        const text = node && typeof node.textContent === 'string' ? node.textContent : '';
+        if (!text){
+          return -1;
+        }
+        let index = Math.max(0, Math.min(offset, text.length));
+        while (index > 0 && /\s/.test(text[index - 1])){
+          index -= 1;
+        }
+        while (index > 0 && !/\s/.test(text[index - 1])){
+          index -= 1;
+        }
+        return index;
       },
   
       createPage(){

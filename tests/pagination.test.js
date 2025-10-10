@@ -73,7 +73,14 @@ function buildHarnessHtml({ pageWidth, pageHeight }) {
 const LINE_BREAK_FLOW = `<p>${Array.from({ length: 200 }, (_, index) => `Line ${index + 1}`).join('<br>')}</p>`;
 const VIEWPORT = { width: 1024, height: 768 };
 
-/** @type {{name: string, harnessHtml: string, flowHtml: string, expectedLastToken: string}[]} */
+/** @type {{
+  name: string,
+  harnessHtml: string,
+  flowHtml: string,
+  expectedLastToken: string,
+  expectedLeadingFootnotes?: number,
+  expectedDanglingSup?: number
+}[]} */
 const testCases = [
   {
     name: 'SingleBlock_ShouldNotOverflow',
@@ -99,6 +106,7 @@ const testCases = [
     flowHtml: `<p>${Array.from({ length: 600 }, (_, index) => `word${index + 1}`).join(' ')} <sup class="footnote-ref" data-footnote-id="fn1">[1]</sup> ${Array.from({ length: 400 }, (_, index) => `tail${index + 1}`).join(' ')}</p>`,
     expectedLastToken: 'tail400',
     expectedLeadingFootnotes: 0,
+    expectedDanglingSup: 0,
   },
 ];
 
@@ -140,11 +148,26 @@ module.exports = async function runPaginationTests() {
           return false;
         }).length;
 
+        const danglingSup = pages.reduce((count, node) => {
+          const refs = Array.from(node.querySelectorAll('sup.footnote-ref'));
+          const invalid = refs.filter((ref) => {
+            const parent = ref.parentElement;
+            if (!parent) return true;
+            const parentTag = parent.tagName;
+            if (parentTag === 'P' || parentTag === 'EM' || parentTag === 'SPAN' || parentTag === 'STRONG') {
+              return false;
+            }
+            return true;
+          });
+          return count + invalid.length;
+        }, 0);
+
         return {
           overflowCount,
           maxOverflow: overflowDiffs.reduce((max, diff) => Math.max(max, diff), 0),
           trailingToken,
           leadingFootnotes,
+          danglingSup,
         };
       }, testCase.flowHtml);
 
@@ -165,6 +188,14 @@ module.exports = async function runPaginationTests() {
           metrics.leadingFootnotes,
           testCase.expectedLeadingFootnotes,
           `${testCase.name}: expected ${testCase.expectedLeadingFootnotes} pages to start with footnote markers, found ${metrics.leadingFootnotes}`,
+        );
+      }
+
+      if (typeof testCase.expectedDanglingSup === 'number') {
+        assertEqual(
+          metrics.danglingSup,
+          testCase.expectedDanglingSup,
+          `${testCase.name}: expected ${testCase.expectedDanglingSup} dangling footnote markers outside inline containers, found ${metrics.danglingSup}`,
         );
       }
 

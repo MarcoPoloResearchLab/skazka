@@ -66,6 +66,15 @@
 
     .toc-offcanvas .offcanvas-body a { text-decoration:none; }
     .popover { color:#111; }
+    .theme-light .offcanvas,
+    .theme-sepia .offcanvas,
+    .theme-dark .offcanvas {
+      background: var(--page-bg);
+      color: var(--page-fg);
+    }
+    .theme-dark .offcanvas {
+      border-color: rgba(255, 255, 255, 0.12);
+    }
   </style>
 </head>
 <body x-data="bookReader()" x-init="init()" :class="themeClass">
@@ -144,13 +153,13 @@
           <div class="d-flex align-items-center gap-2">
             <label class="form-label m-0"><i class="bi bi-type"></i></label>
             <input type="range" class="form-range" min="14" max="26" step="1" x-model.number="ui.fontSizePx"
-                   @input="applyTypography()" style="width: 120px;">
+                   @input="handleFontSizeSliderInput()" style="width: 120px;">
           </div>
 
           <div class="d-none d-md-flex align-items-center gap-2">
             <label class="form-label m-0"><i class="bi bi-aspect-ratio"></i></label>
             <input type="range" class="form-range" min="12" max="48" step="2" x-model.number="ui.pagePaddingPx"
-                   @input="applyTypography()" style="width: 120px;">
+                   @input="handlePagePaddingSliderInput()" style="width: 120px;">
           </div>
 
           <div class="d-flex align-items-center gap-2">
@@ -166,11 +175,6 @@
             <input class="form-check-input" type="checkbox" id="fitHeightSwitch" x-model="ui.fitViewportHeight"
                    @change="applyTypography()">
             <label class="form-check-label" for="fitHeightSwitch">Fit Height</label>
-          </div>
-
-          <div class="btn-group">
-            <button class="btn btn-outline-secondary" @click="prevPage()"><i class="bi bi-chevron-left"></i></button>
-            <button class="btn btn-outline-secondary" @click="nextPage()"><i class="bi bi-chevron-right"></i></button>
           </div>
         </div>
       </div>

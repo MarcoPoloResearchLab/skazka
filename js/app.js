@@ -14,29 +14,26 @@ if (typeof window !== 'undefined') {
   window.readerToc = createToc;
 }
 
-const ensureStringsStore = () => {
-  const Alpine = window.Alpine;
-  if (Alpine && typeof Alpine.store === 'function') {
-    Alpine.store('strings', STRINGS);
-    return true;
-  }
-  if (!window.$store) {
-    window.$store = {};
-  }
-  if (!window.$store.strings) {
-    window.$store.strings = STRINGS;
-  }
-  return false;
-};
-
-const startAlpineWhenReady = () => {
-  ensureStringsStore();
-  if (typeof window.__startAlpine === 'function') {
-    window.__startAlpine();
-    delete window.__startAlpine;
+const registerFactories = (Alpine) => {
+  if (!Alpine || typeof Alpine.data !== 'function') {
     return;
   }
-  requestAnimationFrame(startAlpineWhenReady);
+  if (typeof Alpine.store === 'function') {
+    Alpine.store('strings', STRINGS);
+  } else {
+    window.$store = window.$store || {};
+    window.$store.strings = STRINGS;
+  }
+  Alpine.data('reader', createReader);
+  Alpine.data('readerToolbar', createToolbar);
+  Alpine.data('appNotifications', createNotifications);
+  Alpine.data('readerToc', createToc);
 };
 
-startAlpineWhenReady();
+document.addEventListener('alpine:init', (event) => {
+  registerFactories(event.detail || window.Alpine);
+});
+
+if (window.Alpine) {
+  registerFactories(window.Alpine);
+}

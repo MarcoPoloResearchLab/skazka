@@ -40,4 +40,26 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## BugFixes
 
+- [ ] [SZ-15] Text rendering stops mid story.  the rendered version of [text](<assets/texts/В. Ф. Одоевский. Городок в табакерке. Текст произведения.txt>) ends at "молоточки быстро застучали, колокольчики" for no good reason, as the text continues.
+
+- [ ] [SZ-16] Page counting at the bottom nwext to thermometer is broken. It adds pages as the browsing goes, so going to the next page adds 1 to toal pages. Total pages shall be pre-computed, and only change if we change window size, font size etc
+
+- [ ] [SZ-17] TOC is not updated after loading another book
+
+- [ ] [SZ-19] JS Conosle errors
+
+This site appears to use a scroll-linked positioning effect. This may not work well with asynchronous panning; see https://firefox-source-docs.mozilla.org/performance/scroll-linked_effects.html for further details and to join the discussion on related tools and features! localhost:8000
+Uncaught DOMException: Node.insertBefore: Child to insert before is not a child of this node
+    renderPages http://localhost:8000/js/app.js:553
+    decodeAndConsume http://localhost:8000/js/app.js:120
+    onload http://localhost:8000/js/app.js:78
+app.js:553
+Uncaught DOMException: Node.insertBefore: Child to insert before is not a child of this node
+    renderPages http://localhost:8000/js/app.js:553
+    decodeAndConsume http://localhost:8000/js/app.js:120
+    repaginateIfNeeded http://localhost:8000/js/app.js:981
+    init http://localhost:8000/js/app.js:45
+2 app.js:553
+
+
 ## Maintenance

@@ -1,12 +1,11 @@
 // @ts-check
 
-const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-
-const APP_JS_PATH = path.join(__dirname, '..', 'js', 'app.js');
-const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
+const { createHarnessFile } = require('./helpers/harness');
+const READER_MODULE_URL = pathToFileURL(path.join(__dirname, '..', 'js', 'ui', 'reader.js')).href;
 
 /**
  * @param {object} options
@@ -65,7 +64,17 @@ function buildHarnessHtml({ pageWidth, pageHeight }) {
         </div>
         <div class="footer"></div>
       </div>
-      <script>${appSource}</script>
+      <script type="module">
+        import('${READER_MODULE_URL}')
+          .then(({ createReader }) => {
+            window.bookReader = createReader;
+            window.__bookReaderReady = true;
+          })
+          .catch((error) => {
+            console.error('Failed to load reader module', error);
+            window.__bookReaderReady = false;
+          });
+      </script>
     </body>
   </html>`;
 }
@@ -111,14 +120,16 @@ const testCases = [
 ];
 
 module.exports = async function runPaginationTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     for (const testCase of testCases) {
       const page = await browser.newPage();
       if (VIEWPORT) {
         await page.setViewport(VIEWPORT);
       }
-      await page.setContent(testCase.harnessHtml, { waitUntil: 'domcontentloaded' });
+      const fileUrl = createHarnessFile(testCase.harnessHtml);
+      await page.goto(fileUrl, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => window.__bookReaderReady === true || typeof window.bookReader === 'function');
 
       const metrics = await page.evaluate((flowHtml) => {
         const reader = bookReader();

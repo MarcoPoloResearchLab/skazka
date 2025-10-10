@@ -5,7 +5,7 @@ const path = require('path');
 const { assertEqual } = require('./assert');
 
 const INDEX_HTML_PATH = path.join(__dirname, '..', 'index.html');
-const APP_JS_PATH = path.join(__dirname, '..', 'js', 'app.js');
+const READER_JS_PATH = path.join(__dirname, '..', 'js', 'ui', 'reader.js');
 
 module.exports = async function runFitHeightTests() {
   const markup = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
@@ -22,10 +22,10 @@ module.exports = async function runFitHeightTests() {
     'Fit height label should be removed when the behavior is always enabled',
   );
 
-  const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
+  const readerSource = fs.readFileSync(READER_JS_PATH, 'utf8');
   assertEqual(
-    appSource.includes('fitViewportHeight'),
+    readerSource.includes('fitViewportHeight'),
     false,
-    'Fit height must be treated as default behavior without toggleable state in app.js',
+    'Fit height must be treated as default behavior without toggleable state in reader.js',
   );
 };

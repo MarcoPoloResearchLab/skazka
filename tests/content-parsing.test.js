@@ -4,9 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-
-const APP_JS_PATH = path.join(__dirname, '..', 'js', 'app.js');
-const INDEX_HTML_PATH = path.join(__dirname, '..', 'index.html');
+const { loadReaderHarness } = require('./helpers/harness');
 const ASSET_ALENKIJ = path.join(__dirname, '..', 'assets', 'texts', 'alenkij.txt');
 const ASSET_GORODOK = path.join(
   __dirname,
@@ -16,49 +14,16 @@ const ASSET_GORODOK = path.join(
   'В. Ф. Одоевский. Городок в табакерке. Текст произведения.txt',
 );
 
-function extractInlineStyles() {
-  const indexHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
-  const match = indexHtml.match(/<style>([\s\S]*?)<\/style>/i);
-  if (!match) {
-    throw new Error('Inline styles not found in index.html');
-  }
-  return match[1];
-}
-
-function buildHarnessHtml() {
-  const inlineStyles = extractInlineStyles();
-  const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
-  return `<!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="utf-8" />
-      <style>
-        ${inlineStyles}
-      </style>
-    </head>
-    <body>
-      <div class="shell">
-        <div class="toolbar"></div>
-        <div class="area">
-          <div id="readerPages" class="pages" style="flex:1 1 auto;"></div>
-        </div>
-        <div class="footer"></div>
-      </div>
-      <script>${appSource}</script>
-    </body>
-  </html>`;
-}
-
 function readFileAsBase64(filePath) {
   return fs.readFileSync(filePath).toString('base64');
 }
 
 module.exports = async function runContentParsingTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
-    await page.setContent(buildHarnessHtml(), { waitUntil: 'domcontentloaded' });
+    await loadReaderHarness(page);
 
     const results = await page.evaluate(
       async ({ alenkijBase64, gorodokBase64 }) => {

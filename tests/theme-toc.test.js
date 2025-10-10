@@ -2,7 +2,7 @@
 
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-const { buildReaderHarnessHtml } = require('./helpers/harness');
+const { loadReaderHarness } = require('./helpers/harness');
 
 const TOC_MARKUP = `
 <div class="offcanvas offcanvas-start toc-offcanvas" id="tocDrawer">
@@ -12,13 +12,10 @@ const TOC_MARKUP = `
 </div>`;
 
 module.exports = async function runTocThemeTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
-    await page.setContent(
-      buildReaderHarnessHtml({ extraBodyMarkup: TOC_MARKUP }),
-      { waitUntil: 'domcontentloaded' },
-    );
+    await loadReaderHarness(page, { extraBodyMarkup: TOC_MARKUP });
 
     const metrics = await page.evaluate(() => {
       const reader = bookReader();

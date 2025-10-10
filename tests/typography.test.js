@@ -2,17 +2,17 @@
 
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-const { buildReaderHarnessHtml } = require('./helpers/harness');
+const { loadReaderHarness } = require('./helpers/harness');
 const { EXPECTED_PAGE_PADDING_PX } = require('./helpers/constants');
 
 const LONG_PARAGRAPH_FLOW = `<p>${Array.from({ length: 1200 }, (_, index) => `Sentence ${index + 1}.`).join(' ')}</p>`;
 
 module.exports = async function runTypographyTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1024, height: 768 });
-    await page.setContent(buildReaderHarnessHtml(), { waitUntil: 'domcontentloaded' });
+    await loadReaderHarness(page);
 
     const metrics = await page.evaluate(({ flowHtml, expectedPadding }) => {
       const reader = bookReader();

@@ -118,6 +118,13 @@ You’ll see a clean title page, detected author (when available), a **Table of 
 **Does it support EPUB/PDF?**
 No — this tool focuses on plain `.txt` (and simple HTML that contains `<pre>` blocks). That’s why it’s fast and simple.
 
+## Developer Notes
+
+* **ES module architecture** – `js/app.js` composes Alpine factories from `js/ui/reader.js`, `js/ui/toolbar.js`, `js/ui/notifications.js`, and `js/ui/toc.js`. Domain services live under `js/core/` (`text-source`, `text-normalizer`, `pagination`) with shared adapters in `js/utils/` (`dom`, `storage`, `pagination-dom`). Shared copy and event tokens live in `js/constants.js`.
+* **Event-driven components** – Toolbar controls dispatch DOM-scoped events (`reader:load-requested`, `reader:file-selected`, `reader:provider-encoding-changed`, `reader:font-size-set`, `reader:theme-set`). The reader emits `reader:tocUpdated`, navigation requests listen for `reader:goto-heading`, and notifications surface through `app:notify`.
+* **Testing harness** – `npm test` runs the Puppeteer suite plus core service unit checks (`tests/core-modules.test.js`). Harness utilities in `tests/helpers/harness.js` generate temporary HTML files inside `tests/.tmp/` (git-ignored) so integration tests can import the ES modules without a bundler.
+* **Legacy compatibility** – `window.bookReader` still exposes the reader factory for automation and regression tests, but new integrations should prefer the event contracts above.
+
 **Will it work with very large books?**
 Yes. The layout engine relies on browser columns, so it stays smooth without heavy JS pagination.
 

@@ -2,20 +2,20 @@
 
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-const { buildReaderHarnessHtml } = require('./helpers/harness');
+const { loadReaderHarness } = require('./helpers/harness');
 
 const CONTROL_SELECTORS = [
   { selector: 'select[x-model="provider"]', name: 'provider select' },
   { selector: 'select[x-model="encoding"]', name: 'encoding select' },
   { selector: 'input[x-model="loadUrl"]', name: 'URL input' },
-  { selector: 'select[x-model="ui.theme"]', name: 'theme select' },
+  { selector: 'select[x-model="theme"]', name: 'theme select' },
 ];
 
 module.exports = async function runToolbarThemeTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
-    await page.setContent(buildReaderHarnessHtml(), { waitUntil: 'domcontentloaded' });
+    await loadReaderHarness(page);
 
     const measurements = await page.evaluate((controls) => {
       const reader = bookReader();

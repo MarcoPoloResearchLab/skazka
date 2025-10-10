@@ -1,11 +1,13 @@
 // @ts-check
 
 const fs = require('fs');
+const path = require('path');
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-const { buildReaderHarnessHtml, APP_JS_PATH, INDEX_HTML_PATH } = require('./helpers/harness');
+const { INDEX_HTML_PATH, loadReaderHarness } = require('./helpers/harness');
 const { EXPECTED_PAGE_PADDING_PX } = require('./helpers/constants');
 const SAMPLE_FLOW = '<p>Margin test paragraph content.</p>';
+const READER_JS_PATH = path.join(__dirname, '..', 'js', 'ui', 'reader.js');
 
 module.exports = async function runPageMarginTests() {
   const markup = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
@@ -15,18 +17,18 @@ module.exports = async function runPageMarginTests() {
     'Page margin slider must be removed from the toolbar markup',
   );
 
-  const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
+  const readerSource = fs.readFileSync(READER_JS_PATH, 'utf8');
   assertEqual(
-    appSource.includes('handlePagePaddingSliderInput'),
+    readerSource.includes('handlePagePaddingSliderInput'),
     false,
-    'Page padding change handler must not remain in app.js once margins are fixed',
+    'Page padding change handler must not remain in reader.js once margins are fixed',
   );
 
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1024, height: 768 });
-    await page.setContent(buildReaderHarnessHtml(), { waitUntil: 'domcontentloaded' });
+    await loadReaderHarness(page);
 
     const metrics = await page.evaluate(
       ({ flow, expectedPadding }) => {

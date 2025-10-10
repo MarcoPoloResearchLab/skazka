@@ -2,10 +2,11 @@
 
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 
 const PROJECT_ROOT = path.join(__dirname, '..', '..');
 const INDEX_HTML_PATH = path.join(PROJECT_ROOT, 'index.html');
-const APP_JS_PATH = path.join(PROJECT_ROOT, 'js', 'app.js');
+const READER_MODULE_URL = pathToFileURL(path.join(PROJECT_ROOT, 'js', 'ui', 'reader.js')).href;
 
 const inlineStyles = (() => {
   const indexHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
@@ -15,8 +16,6 @@ const inlineStyles = (() => {
   }
   return match[1];
 })();
-
-const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
 
 const DEFAULT_TOOLBAR_MARKUP = `
       <div class="toolbar">
@@ -45,7 +44,7 @@ const DEFAULT_TOOLBAR_MARKUP = `
 
           <div class="d-flex align-items-center gap-2">
             <label class="form-label m-0"><i class="bi bi-palette"></i></label>
-            <select class="form-select form-select-sm" x-model="ui.theme">
+            <select class="form-select form-select-sm" x-model="theme">
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
@@ -79,14 +78,49 @@ function buildReaderHarnessHtml(options = {}) {
         <div class="footer"></div>
       </div>
       ${extraBodyMarkup}
-      <script>${appSource}</script>
+      ${buildReaderModuleScript()}
     </body>
   </html>`;
 }
 
+function buildReaderModuleScript() {
+  return `<script type="module">
+        import('${READER_MODULE_URL}')
+          .then((module) => {
+            window.bookReader = module.createReader;
+            window.__bookReaderReady = true;
+          })
+          .catch((error) => {
+            console.error('Failed to load reader module', error);
+            window.__bookReaderReady = false;
+          });
+      </script>`;
+}
+
+const TMP_DIR = path.join(PROJECT_ROOT, 'tests', '.tmp');
+fs.mkdirSync(TMP_DIR, { recursive: true });
+
+let harnessCounter = 0;
+
+function createHarnessFile(markup) {
+  const filename = `harness-${Date.now()}-${harnessCounter += 1}.html`;
+  const fullPath = path.join(TMP_DIR, filename);
+  fs.writeFileSync(fullPath, markup, 'utf8');
+  return pathToFileURL(fullPath).href;
+}
+
+async function loadReaderHarness(page, options = {}) {
+  const fileUrl = createHarnessFile(buildReaderHarnessHtml(options));
+  await page.goto(fileUrl, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.__bookReaderReady === true || typeof window.bookReader === 'function');
+}
+
 module.exports = {
   buildReaderHarnessHtml,
-  APP_JS_PATH,
   INDEX_HTML_PATH,
   inlineStyles,
+  READER_MODULE_URL,
+  buildReaderModuleScript,
+  loadReaderHarness,
+  createHarnessFile,
 };

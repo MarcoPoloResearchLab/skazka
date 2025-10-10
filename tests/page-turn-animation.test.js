@@ -2,7 +2,7 @@
 
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-const { buildReaderHarnessHtml, inlineStyles } = require('./helpers/harness');
+const { inlineStyles, loadReaderHarness } = require('./helpers/harness');
 const { PAGE_TURN_ANIMATION_MS } = require('./helpers/constants');
 
 const LONG_FLOW = `<p>${Array.from({ length: 1500 }, (_, index) => `Story sentence ${index + 1}.`).join(' ')}</p>`;
@@ -22,11 +22,11 @@ module.exports = async function runPageTurnAnimationTests() {
     'Reader styles must expose a page corner flip class hook',
   );
 
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
-    await page.setContent(buildReaderHarnessHtml(), { waitUntil: 'domcontentloaded' });
+    await loadReaderHarness(page);
 
     const pageCount = await page.evaluate((flowHtml) => {
       window.__reader = bookReader();

@@ -1,12 +1,11 @@
 // @ts-check
 
-const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-
-const APP_JS_PATH = path.join(__dirname, '..', 'js', 'app.js');
-const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
+const { createHarnessFile } = require('./helpers/harness');
+const READER_MODULE_URL = pathToFileURL(path.join(__dirname, '..', 'js', 'ui', 'reader.js')).href;
 
 /**
  * @param {object} options
@@ -68,15 +67,22 @@ function buildHarnessHtml({ pageWidth, pageHeight }) {
           <div id="progressSummary" data-test="progress-summary"></div>
         </div>
       </div>
-      <script>${appSource}</script>
-      <script>
-        window.attachReader = function(flowHtml) {
-          const reader = bookReader();
-          reader.pagesEl = document.getElementById('readerPages');
-          reader.applyTypography();
-          reader.renderPages(flowHtml);
-          return reader;
-        };
+      <script type="module">
+        import('${READER_MODULE_URL}')
+          .then(({ createReader }) => {
+            window.attachReader = function(flowHtml) {
+              const reader = createReader();
+              reader.pagesEl = document.getElementById('readerPages');
+              reader.applyTypography();
+              reader.renderPages(flowHtml);
+              return reader;
+            };
+            window.__bookReaderReady = true;
+          })
+          .catch((error) => {
+            console.error('Failed to load reader module', error);
+            window.__bookReaderReady = false;
+          });
       </script>
     </body>
   </html>`;
@@ -104,14 +110,16 @@ const testCases = [
 ];
 
 module.exports = async function runProgressTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     for (const testCase of testCases) {
       const page = await browser.newPage();
       if (VIEWPORT) {
         await page.setViewport(VIEWPORT);
       }
-      await page.setContent(testCase.harnessHtml, { waitUntil: 'domcontentloaded' });
+      const fileUrl = createHarnessFile(testCase.harnessHtml);
+      await page.goto(fileUrl, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => window.__bookReaderReady === true || typeof window.bookReader === 'function');
 
       const metrics = await page.evaluate((flowHtml) => {
         const reader = window.attachReader(flowHtml);
@@ -167,7 +175,7 @@ module.exports = async function runProgressTests() {
         `${testCase.name}: expected progress to start at 0% on the first page`,
       );
 
-      const expectedInitialSummary = metrics.totalPages >= 1 ? `${metrics.totalPages}/1` : null;
+      const expectedInitialSummary = metrics.totalPages >= 1 ? `1/${metrics.totalPages}` : null;
       assertEqual(
         metrics.initial.summary,
         expectedInitialSummary,
@@ -182,7 +190,7 @@ module.exports = async function runProgressTests() {
           `${testCase.name}: expected progress to reflect advancement to the next page`,
         );
 
-        const expectedMidSummary = `${metrics.totalPages}/2`;
+        const expectedMidSummary = `2/${metrics.totalPages}`;
         assertEqual(
           metrics.mid.summary,
           expectedMidSummary,

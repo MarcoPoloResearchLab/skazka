@@ -2,7 +2,7 @@
 
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-const { buildReaderHarnessHtml } = require('./helpers/harness');
+const { loadReaderHarness } = require('./helpers/harness');
 
 const BOOK_INFO_TOOLBAR = `
       <div class="toolbar">
@@ -16,13 +16,10 @@ const BOOK_INFO_TOOLBAR = `
       </div>`;
 
 module.exports = async function runSubtitleThemeTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
-    await page.setContent(
-      buildReaderHarnessHtml({ toolbarMarkup: BOOK_INFO_TOOLBAR }),
-      { waitUntil: 'domcontentloaded' },
-    );
+    await loadReaderHarness(page, { toolbarMarkup: BOOK_INFO_TOOLBAR });
     await page.addStyleTag({ content: '.text-muted { color: rgb(108, 117, 125); }' });
 
     const measurements = await page.evaluate(() => {

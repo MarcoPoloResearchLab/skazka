@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-const { buildReaderHarnessHtml } = require('./helpers/harness');
+const { loadReaderHarness } = require('./helpers/harness');
 
 const SNIPPET_HTML = fs.readFileSync(
   path.join(__dirname, 'fixtures', 'footnote-snippet.html'),
@@ -12,11 +12,11 @@ const SNIPPET_HTML = fs.readFileSync(
 );
 
 module.exports = async function runFootnoteInlineTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 1200 });
-    await page.setContent(buildReaderHarnessHtml(), { waitUntil: 'domcontentloaded' });
+    await loadReaderHarness(page);
 
     const assetPath = path.join(__dirname, '..', 'assets', 'texts', 'alenkij.txt');
     const assetBytes = Array.from(fs.readFileSync(assetPath));

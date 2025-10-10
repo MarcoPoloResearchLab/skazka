@@ -28,7 +28,6 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## Improvements
 
-- [ ] [SZ-13] The margins shall not be configurable. Remove the second slider and make margin large enough to display an image of the page
 - [ ] [SZ-14] Add a feeling of browsing pages by adding visual rendering of swirling the page corner on the page turn
 
 ## BugFixes

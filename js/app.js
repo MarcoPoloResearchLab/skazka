@@ -1,9 +1,10 @@
+const PAGE_PADDING_PX = 48;
+
 function bookReader(){
     return {
       /* ---------- UI state ---------- */
       ui: {
         fontSizePx: 18,
-        pagePaddingPx: 24,
         theme: 'light',
         currentPageIndex: 0,
         totalPageCount: 1
@@ -686,10 +687,6 @@ function bookReader(){
         this.applyTypography();
         this.rebuildPagesAfterTypographyChange();
       },
-      handlePagePaddingSliderInput(){
-        this.applyTypography();
-        this.rebuildPagesAfterTypographyChange();
-      },
       rebuildPagesAfterTypographyChange(){
         if (!this.lastFlowHtml || !this.pagesEl) return;
         const totalPages = Math.max(1, this.ui.totalPageCount);
@@ -723,12 +720,12 @@ function bookReader(){
           160,
           Math.min(Math.floor(viewportAllowance), Math.floor(areaHeight)),
         );
-  
+
         this.pageHeightPx = targetHeight;
         rs.setProperty('--page-height', `${targetHeight}px`);
-  
+
         rs.setProperty('--base-font-size', this.ui.fontSizePx + 'px');
-        rs.setProperty('--page-padding', this.ui.pagePaddingPx + 'px');
+        rs.setProperty('--page-padding', PAGE_PADDING_PX + 'px');
       },
       applyTheme(){
         this.themeClass = this.ui.theme==='dark' ? 'theme-dark' :

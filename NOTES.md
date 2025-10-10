@@ -34,6 +34,4 @@ Leave Features, BugFixes, Improvements, Maintenance sections empty when all fixe
 
 ## BugFixes
 
-- [ ] [SZ-08] The page browsing is represented with two pairs of angular brackerts -- in the top bar and on the page side. There must be only one pair of angular brackets, on the sides of the page. Remove the brackets on top
-
 ## Maintenance

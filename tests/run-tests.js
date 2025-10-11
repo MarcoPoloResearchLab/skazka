@@ -15,14 +15,15 @@ async function run() {
     if (typeof runSuite !== 'function') {
       throw new Error(`Test file ${file} must export a function.`);
     }
+    console.log(`→ Running ${file}`);
     await runSuite();
+    console.log(`✓ Finished ${file}`);
   }
 
-  process.stdout.write(`✔ ${testFiles.length} test file(s) passed\\n`);
+  console.log(`✔ ${testFiles.length} test file(s) passed`);
 }
 
 run().catch((error) => {
   console.error(error);
   process.exit(1);
 });
-

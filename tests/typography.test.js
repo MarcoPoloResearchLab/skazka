@@ -1,56 +1,20 @@
 // @ts-check
 
-const fs = require('fs');
-const path = require('path');
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-
-const APP_JS_PATH = path.join(__dirname, '..', 'js', 'app.js');
-const INDEX_HTML_PATH = path.join(__dirname, '..', 'index.html');
-const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
-
-function extractTypographyStyles() {
-  const indexHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
-  const match = indexHtml.match(/<style>([\s\S]*?)<\/style>/i);
-  if (!match) {
-    throw new Error('Inline styles not found in index.html');
-  }
-  return match[1];
-}
-
-function buildHarnessHtml() {
-  const inlineStyles = extractTypographyStyles();
-  return `<!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="utf-8" />
-      <style>
-        ${inlineStyles}
-      </style>
-    </head>
-    <body>
-      <div class="shell">
-        <div class="toolbar"></div>
-        <div class="area">
-          <div id="readerPages" class="pages" style="flex:1 1 auto;"></div>
-        </div>
-        <div class="footer"></div>
-      </div>
-      <script>${appSource}</script>
-    </body>
-  </html>`;
-}
+const { loadReaderHarness } = require('./helpers/harness');
+const { EXPECTED_PAGE_PADDING_PX } = require('./helpers/constants');
 
 const LONG_PARAGRAPH_FLOW = `<p>${Array.from({ length: 1200 }, (_, index) => `Sentence ${index + 1}.`).join(' ')}</p>`;
 
 module.exports = async function runTypographyTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1024, height: 768 });
-    await page.setContent(buildHarnessHtml(), { waitUntil: 'domcontentloaded' });
+    await loadReaderHarness(page);
 
-    const metrics = await page.evaluate((flowHtml) => {
+    const metrics = await page.evaluate(({ flowHtml, expectedPadding }) => {
       const reader = bookReader();
       reader.pagesEl = document.getElementById('readerPages');
       reader.applyTypography();
@@ -64,7 +28,7 @@ module.exports = async function runTypographyTests() {
       const firstPage = pageNodes[0];
       const initialComputed = getComputedStyle(firstPage);
       const initialFontSize = initialComputed.fontSize;
-      const initialPadding = initialComputed.paddingLeft;
+      const initialPaddingPx = parseFloat(initialComputed.paddingLeft);
 
       const overflowBefore = pageNodes.filter((node) => node.scrollHeight > node.clientHeight + 0.5).length;
 
@@ -78,23 +42,20 @@ module.exports = async function runTypographyTests() {
         (node) => node.scrollHeight > node.clientHeight + 0.5,
       ).length;
 
-      reader.ui.pagePaddingPx = 40;
-      reader.handlePagePaddingSliderInput();
-      const pageNodesAfterPadding = Array.from(reader.pagesEl.children);
-      const afterPaddingComputed = getComputedStyle(pageNodesAfterPadding[0]);
-      const updatedPadding = afterPaddingComputed.paddingLeft;
+      const paddingAfterFontPx = parseFloat(afterFontComputed.paddingLeft);
 
       return {
         initialFontSize,
         updatedFontSize,
-        initialPadding,
-        updatedPadding,
+        initialPaddingPx,
+        paddingAfterFontPx,
         overflowBefore,
         overflowAfterFont,
         totalPages: reader.ui.totalPageCount,
         pageCountMatches: reader.ui.totalPageCount === reader.pagesEl.children.length,
+        expectedPadding,
       };
-    }, LONG_PARAGRAPH_FLOW);
+    }, { flowHtml: LONG_PARAGRAPH_FLOW, expectedPadding: EXPECTED_PAGE_PADDING_PX });
 
     assertEqual(
       metrics.updatedFontSize === metrics.initialFontSize,
@@ -109,9 +70,15 @@ module.exports = async function runTypographyTests() {
     );
 
     assertEqual(
-      metrics.updatedPadding === metrics.initialPadding,
-      false,
-      'Page padding slider must change the rendered page padding',
+      metrics.initialPaddingPx,
+      metrics.expectedPadding,
+      `Default page padding must be ${EXPECTED_PAGE_PADDING_PX}px to frame page content`,
+    );
+
+    assertEqual(
+      metrics.paddingAfterFontPx,
+      metrics.expectedPadding,
+      'Page padding must remain fixed when typography settings change',
     );
 
     assertEqual(

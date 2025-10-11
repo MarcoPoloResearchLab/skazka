@@ -1,12 +1,11 @@
 // @ts-check
 
-const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
-
-const APP_JS_PATH = path.join(__dirname, '..', 'js', 'app.js');
-const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
+const { createHarnessFile } = require('./helpers/harness');
+const READER_MODULE_URL = pathToFileURL(path.join(__dirname, '..', 'js', 'ui', 'reader.js')).href;
 
 /**
  * @param {object} options
@@ -65,7 +64,17 @@ function buildHarnessHtml({ pageWidth, pageHeight }) {
         </div>
         <div class="footer"></div>
       </div>
-      <script>${appSource}</script>
+      <script type="module">
+        import('${READER_MODULE_URL}')
+          .then(({ createReader }) => {
+            window.bookReader = createReader;
+            window.__bookReaderReady = true;
+          })
+          .catch((error) => {
+            console.error('Failed to load reader module', error);
+            window.__bookReaderReady = false;
+          });
+      </script>
     </body>
   </html>`;
 }
@@ -73,7 +82,14 @@ function buildHarnessHtml({ pageWidth, pageHeight }) {
 const LINE_BREAK_FLOW = `<p>${Array.from({ length: 200 }, (_, index) => `Line ${index + 1}`).join('<br>')}</p>`;
 const VIEWPORT = { width: 1024, height: 768 };
 
-/** @type {{name: string, harnessHtml: string, flowHtml: string, expectedLastToken: string}[]} */
+/** @type {{
+  name: string,
+  harnessHtml: string,
+  flowHtml: string,
+  expectedLastToken: string,
+  expectedLeadingFootnotes?: number,
+  expectedDanglingSup?: number
+}[]} */
 const testCases = [
   {
     name: 'SingleBlock_ShouldNotOverflow',
@@ -87,17 +103,33 @@ const testCases = [
     flowHtml: `<p>${Array.from({ length: 2000 }, (_, index) => `word${index + 1}`).join(' ')}</p>`,
     expectedLastToken: 'word2000',
   },
+  {
+    name: 'RawTextNodes_ShouldPaginateCleanly',
+    harnessHtml: buildHarnessHtml({ pageWidth: 1024, pageHeight: 'calc(100vh - 160px)' }),
+    flowHtml: Array.from({ length: 1200 }, (_, index) => `token${index + 1}`).join('  '),
+    expectedLastToken: 'token1200',
+  },
+  {
+    name: 'FootnoteReferencesStayInline',
+    harnessHtml: buildHarnessHtml({ pageWidth: 1024, pageHeight: 'calc(100vh - 160px)' }),
+    flowHtml: `<p>${Array.from({ length: 600 }, (_, index) => `word${index + 1}`).join(' ')} <sup class="footnote-ref" data-footnote-id="fn1">[1]</sup> ${Array.from({ length: 400 }, (_, index) => `tail${index + 1}`).join(' ')}</p>`,
+    expectedLastToken: 'tail400',
+    expectedLeadingFootnotes: 0,
+    expectedDanglingSup: 0,
+  },
 ];
 
 module.exports = async function runPaginationTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     for (const testCase of testCases) {
       const page = await browser.newPage();
       if (VIEWPORT) {
         await page.setViewport(VIEWPORT);
       }
-      await page.setContent(testCase.harnessHtml, { waitUntil: 'domcontentloaded' });
+      const fileUrl = createHarnessFile(testCase.harnessHtml);
+      await page.goto(fileUrl, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => window.__bookReaderReady === true || typeof window.bookReader === 'function');
 
       const metrics = await page.evaluate((flowHtml) => {
         const reader = bookReader();
@@ -105,17 +137,48 @@ module.exports = async function runPaginationTests() {
         reader.applyTypography();
         reader.renderPages(flowHtml);
 
-      const pages = Array.from(reader.pagesEl.children);
-      const overflowDiffs = pages.map((node) => node.scrollHeight - node.clientHeight);
-      const overflowCount = overflowDiffs.filter((diff) => diff > 0.5).length;
-      const combinedText = pages.map((node) => (node.textContent || '').trim()).join(' ').trim();
-      const tokens = combinedText ? combinedText.split(/\s+/) : [];
-      const trailingToken = tokens.length ? tokens[tokens.length - 1] : '';
+        const pages = Array.from(reader.pagesEl.children);
+        const overflowDiffs = pages.map((node) => node.scrollHeight - node.clientHeight);
+        const overflowCount = overflowDiffs.filter((diff) => diff > 0.5).length;
+        const combinedText = pages.map((node) => (node.textContent || '').trim()).join(' ').trim();
+        const tokens = combinedText ? combinedText.split(/\s+/) : [];
+        const trailingToken = tokens.length ? tokens[tokens.length - 1] : '';
+        const leadingFootnotes = pages.filter((node) => {
+          const firstElement = node.firstElementChild || node.firstChild;
+          if (!firstElement) return false;
+          if (firstElement.nodeType === Node.ELEMENT_NODE && firstElement.tagName === 'SUP') {
+            return true;
+          }
+          if (firstElement.nodeType === Node.TEXT_NODE) {
+            return firstElement.textContent.trim().startsWith('[');
+          }
+          if (firstElement.nodeType === Node.ELEMENT_NODE && firstElement.tagName === 'P') {
+            const text = firstElement.textContent.trim();
+            return text.startsWith('[');
+          }
+          return false;
+        }).length;
+
+        const danglingSup = pages.reduce((count, node) => {
+          const refs = Array.from(node.querySelectorAll('sup.footnote-ref'));
+          const invalid = refs.filter((ref) => {
+            const parent = ref.parentElement;
+            if (!parent) return true;
+            const parentTag = parent.tagName;
+            if (parentTag === 'P' || parentTag === 'EM' || parentTag === 'SPAN' || parentTag === 'STRONG') {
+              return false;
+            }
+            return true;
+          });
+          return count + invalid.length;
+        }, 0);
 
         return {
           overflowCount,
           maxOverflow: overflowDiffs.reduce((max, diff) => Math.max(max, diff), 0),
           trailingToken,
+          leadingFootnotes,
+          danglingSup,
         };
       }, testCase.flowHtml);
 
@@ -130,6 +193,22 @@ module.exports = async function runPaginationTests() {
         testCase.expectedLastToken,
         `${testCase.name}: expected trailing token "${testCase.expectedLastToken}" but found "${metrics.trailingToken}"`,
       );
+
+      if (typeof testCase.expectedLeadingFootnotes === 'number') {
+        assertEqual(
+          metrics.leadingFootnotes,
+          testCase.expectedLeadingFootnotes,
+          `${testCase.name}: expected ${testCase.expectedLeadingFootnotes} pages to start with footnote markers, found ${metrics.leadingFootnotes}`,
+        );
+      }
+
+      if (typeof testCase.expectedDanglingSup === 'number') {
+        assertEqual(
+          metrics.danglingSup,
+          testCase.expectedDanglingSup,
+          `${testCase.name}: expected ${testCase.expectedDanglingSup} dangling footnote markers outside inline containers, found ${metrics.danglingSup}`,
+        );
+      }
 
       await page.close();
     }

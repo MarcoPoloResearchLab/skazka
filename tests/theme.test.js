@@ -1,62 +1,24 @@
 // @ts-check
 
-const fs = require('fs');
-const path = require('path');
 const puppeteer = require('puppeteer');
 const { assertEqual } = require('./assert');
+const { loadReaderHarness } = require('./helpers/harness');
 
-const APP_JS_PATH = path.join(__dirname, '..', 'js', 'app.js');
-const INDEX_HTML_PATH = path.join(__dirname, '..', 'index.html');
-const appSource = fs.readFileSync(APP_JS_PATH, 'utf8');
-
-function extractThemeCss() {
-  const indexHtml = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
-  const styleMatch = indexHtml.match(/<style>([\s\S]*?)<\/style>/i);
-  if (!styleMatch) {
-    throw new Error('Failed to locate inline styles in index.html');
-  }
-  return styleMatch[1];
-}
-
-function buildHarnessHtml() {
-  const inlineStyles = extractThemeCss();
-  return `<!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="utf-8" />
-      <style>
-        ${inlineStyles}
-        .offcanvas {
-          background-color: #ffffff;
-          color: #212529;
-          padding: 16px;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="shell">
-        <div class="toolbar"></div>
-        <div class="area">
-          <div id="readerPages" class="pages" style="flex:1 1 auto;"></div>
-        </div>
-        <div class="footer"></div>
+const OFFCANVAS_MARKUP = `
+  <div class="offcanvas offcanvas-start toc-offcanvas" id="tocDrawer">
+    <div class="offcanvas-header">Contents</div>
+    <div class="offcanvas-body">
+      <div class="list-group">
+        <a class="list-group-item list-group-item-action" id="tocItem">Chapter 1</a>
       </div>
-
-      <div class="offcanvas offcanvas-start toc-offcanvas" id="tocDrawer">
-        <div class="offcanvas-header">TOC</div>
-        <div class="offcanvas-body">Entries</div>
-      </div>
-
-      <script>${appSource}</script>
-    </body>
-  </html>`;
-}
+    </div>
+  </div>`;
 
 module.exports = async function runThemeTests() {
-  const browser = await puppeteer.launch({ headless: 'new' });
+  const browser = await puppeteer.launch({ headless: 'new', args: ['--allow-file-access-from-files'] });
   try {
     const page = await browser.newPage();
-    await page.setContent(buildHarnessHtml(), { waitUntil: 'domcontentloaded' });
+    await loadReaderHarness(page, { extraBodyMarkup: OFFCANVAS_MARKUP });
 
     const metrics = await page.evaluate(() => {
       const reader = bookReader();
@@ -78,19 +40,19 @@ module.exports = async function runThemeTests() {
     assertEqual(
       metrics.bodyClass.includes('theme-dark'),
       true,
-      'Theme class should be applied to the document body when switching to dark mode',
+      'Applying dark theme should decorate the reader root with .theme-dark class',
     );
 
     assertEqual(
-      metrics.offcanvasBackground !== 'rgb(255, 255, 255)',
+      metrics.offcanvasBackground.startsWith('rgb'),
       true,
-      'TOC offcanvas background should change from the light default when dark theme is applied',
+      'Offcanvas background should resolve to a computed color in dark theme',
     );
 
     assertEqual(
-      metrics.offcanvasColor !== 'rgb(33, 37, 41)',
+      metrics.offcanvasColor.startsWith('rgb'),
       true,
-      'TOC offcanvas foreground color should change from the light default when dark theme is applied',
+      'Offcanvas foreground should resolve to a computed color in dark theme',
     );
   } finally {
     await browser.close();

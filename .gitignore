@@ -1,3 +1,10 @@
 .DS_Store
 node_modules/
 tests/.tmp/
+# Managed by gix gitignore workflow
+.env
+.env.*
+qodana.yaml
+.idea/
+tools/
+bin/
